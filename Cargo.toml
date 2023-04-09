@@ -1,0 +1,11 @@
+[package]
+name = "pg_cpu_load"
+version = "0.2.0"
+authors = ["Sebastiaan Mannem <sebastiaan.mannem@enterprisedb.com>"]
+edition = "2018"
+
+[dependencies]
+postgres = { version = "0.19.5", features = ["with-chrono-0_4"] }
+args = "2.2.0"
+getopts = "0.2.21"
+chrono = "0.4.24"

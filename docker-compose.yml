@@ -8,7 +8,7 @@ services:
       - '-c'
       - 'config_file=/host/config/postgresql.conf'
     environment:
-      POSTGRES_PASSWORD: pg_cpu_test
+      POSTGRES_PASSWORD: pg_tps_optimizer
       POSTGRES_HOST_AUTH_METHOD: cert
     ports:
     - "5432:5432"

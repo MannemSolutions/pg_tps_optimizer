@@ -3,15 +3,18 @@ extern crate args;
 extern crate getopts;
 extern crate chrono;
 
+mod cli;
+mod dsn;
+mod generic;
+
 use chrono::Utc;
 use postgres::{Client, tls};
-use std::{env, process};
-use getopts::Occur;
-use args::Args;
 use std::time::Duration;
 use std::thread;
 use std::sync::{mpsc, RwLock, Arc};
 use std::str::FromStr;
+
+use crate::dsn::Dsn;
 
 const PROGRAM_DESC: &'static str = "generate cpu load on a Postgres cluster, and output the TPS.";
 const PROGRAM_NAME: &'static str = "pg_cpu_load";
@@ -71,63 +74,6 @@ fn postgres_connect_string(args: args::Args) -> String {
         connect_string.push_str(&pgdatabase);
     }
     connect_string
-}
-
-fn parse_args() -> Result<args::Args, args::ArgsError> {
-    let input: Vec<String> = env::args().collect();
-    let mut args = Args::new(PROGRAM_NAME, PROGRAM_DESC);
-    args.flag("?", "help", "Print the usage menu");
-    args.option("d",
-        "dbname",
-        "The database to connect to",
-        "PGDATABASE",
-        Occur::Optional,
-        None);
-    args.option("h",
-        "host",
-        "The hostname to connect to",
-        "PGHOST",
-        Occur::Optional,
-        None);
-    args.option("p",
-        "port",
-        "Postgres port to connect to",
-        "PGPORT",
-        Occur::Optional,
-        None);
-    args.option("P",
-        "parallel",
-        "How much threads to use",
-        "THREADS",
-        Occur::Optional,
-        Some("10".to_string()));
-    args.option("U",
-        "user",
-        "The user to use for the connection",
-        "PGUSER",
-        Occur::Optional,
-        None);
-    args.option("t",
-        "query_type",
-        "The type of query to run: empty, simple, temp_read, temp_write, read, write",
-        "QTYPE",
-        Occur::Optional,
-        Some("simple".to_string()));
-    args.option("s",
-        "statement_type",
-        "The type of statwement prep to use: direct, prepared, transactional, prepared_transactional",
-        "STYPE",
-        Occur::Optional,
-        Some("direct".to_string()));
-    args.option("n",
-        "num_secs",
-        "The number of tests to run. Every test takes one second.",
-        "NUMSEC",
-        Occur::Optional,
-        Some("10".to_string()));
-    args.parse(input)?;
-
-    Ok(args)
 }
 
 fn connect(connect_string: String, initialization: u8, thread_id: u32) -> Result<Client, postgres::Error> {
@@ -239,17 +185,6 @@ fn thread_procedure(thread_id: u32, tx: mpsc::Sender<u64>, thread_lock: std::syn
     //Sleep 100 milliseconds
     let sleeptime = std::time::Duration::from_millis(100);
     conn = reconnect(&connect_string, initialization, thread_id);
-    /*
-    loop {
-        if let Ok(wait) = thread_lock.read() {
-            // done is true when main thread decides we are there
-            if ! *wait {
-                break;
-            }
-        }
-        thread::sleep(sleeptime);
-    }
-    */
 
     loop {
         if let Ok(done) = thread_lock.read() {
@@ -309,42 +244,25 @@ fn downscale(rx: mpsc::Receiver<u64>, tx: mpsc::Sender<u64>, thread_lock: std::s
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut sum_trans: u64;
     let mut threads_avg_tps: f32;
-    let args = parse_args()?;
-    let help = args.value_of("help")?;
-    if help {
-        println!("{}", args.full_usage());
-        process::exit(0);
-    }
-    let stype: String = args.value_of("statement_type")?;
-    if stype != "prepared" && stype != "prepared_transactional" && stype != "transactional" && stype != "direct" {
-        panic!("Option STYPE should be one of direct, prepared, transactional, prepared_transactional (not {}).", stype);
-    }
-    let qtype: String = args.value_of("query_type")?;
-    if qtype != "empty" && qtype != "simple" && qtype != "temp_read" && qtype != "temp_write" && qtype != "read" && qtype != "write" {
-        panic!("Option QTYPE should be one of empty, simple, temp_read, temp_write, read, write (not {}).", qtype);
-    } else if qtype == "empty" && stype != "prepared_transactional" && stype != "transactional" {
-        panic!("Option QTYPE-empty only works with transactions.");
-    }
-
-    let num_threads: String = args.value_of("parallel")?;
-    let num_threads = u32::from_str(&num_threads)?;
-    let num_secs: String = args.value_of("num_secs")?;
-    let num_secs = u32::from_str(&num_secs)?;
+    let args = cli::Params::get_args();
 
     let (tx, rx) = mpsc::channel();
     //let rw_lock = Arc::new(RwLock::new(true));
     let rw_lock = Arc::new(RwLock::new(false));
     let rw_downscaler_lock = Arc::new(RwLock::new(false));
-    let mut threads = Vec::with_capacity(num_threads as usize);
-    let mut num_samples: u32;
-    let mut downscale_threads = Vec::with_capacity(num_threads as usize);
 
-    let connect_string = postgres_connect_string(args);
-    let mut client: Client;
-    client = reconnect(&connect_string, 0, 0);
-    let prep = client.prepare("SELECT now()::timestamp as samplemmoment, pg_current_wal_lsn()::varchar as lsn, (pg_current_wal_lsn() - $1::varchar::pg_lsn)::real as walbytes, (select sum(xact_commit+xact_rollback)::real FROM pg_stat_database) as transacts")?;
+    let client = Dsn::from_string(args.dsn.as_str()).client();
+    let stat_databases_sttmnt = client.prepare(
+        "SELECT now()::timestamp as samplemmoment,
+        pg_current_wal_lsn()::varchar as lsn,
+        (pg_current_wal_lsn() - $1::varchar::pg_lsn)::real as walbytes,
+        (select sum(xact_commit+xact_rollback)::real
+         FROM pg_stat_database) as transacts")?;
 
     println!("Initializing all threads");
+    let num_threads: u32 = 0;
+    let (min_threads, max_threads) = args.range_min_max();
+    let mut threads = Vec::with_capacity(max_threads as usize);
     if num_threads < 200 {
         for thread_id in 0..num_threads {
             let thread_tx = tx.clone();
@@ -382,23 +300,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         num_samples = num_threads / 250;
     }
 
-    /*
-    thread::sleep(std::time::Duration::from_secs(1000));
-
-    println!("Starting all threads");
-    let sleeptime = std::time::Duration::from_secs(1);
-    let main_lock = rw_lock.clone();
-    loop {
-        match main_lock.try_write() {
-            Ok(mut wait) => {
-                *wait = false;
-                break;
-            },
-            Err(_) => thread::sleep(sleeptime),
-        };
-    }
-    */
-
     if num_samples < 1 {
         num_samples = 1
     }
@@ -435,7 +336,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let calc_tps = sum_trans as f32 / duration(start, end);
         threads_avg_tps = calc_tps / num_threads as f32;
 
-        let rows = client.query(&prep, &[&prev_sample.lsn])?;
+        let rows = client.query(&stat_databases_sttmnt, &[&prev_sample.lsn])?;
         assert_eq!(rows.len(), 1);
         let row = rows.get(0).unwrap();
         let sample = TransactDataSample {

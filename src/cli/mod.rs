@@ -30,18 +30,6 @@ pub struct Params {
 }
 
 impl Params {
-    pub fn range_min_max(self) -> (u32, u32) {
-        let re = regex::Regex::new(r"\d+)").unwrap();
-        let values: Vec<u32> = re.find_iter(self.range.as_str())
-            .filter_map(|digits| ( digits.as_str().parse().ok()))
-            .collect();
-        match values.len(){
-            0=>(1,1000),
-            1=>(1,values[0]),
-            _=>(values[0], values[values.len()-1])
-        }
-    }
-
     fn from_args() -> Params {
         <Params as StructOpt>::from_args()
     }
@@ -71,5 +59,16 @@ impl Params {
             &String::from("1:1000"),
         );
         args
+    }
+    pub fn range_min_max(self) -> (u32, u32) {
+        let re = regex::Regex::new(r"\d+)").unwrap();
+        let values: Vec<u32> = re.find_iter(self.range.as_str())
+            .filter_map(|digits| ( digits.as_str().parse().ok()))
+            .collect();
+        match values.len(){
+            0=>(1,1000),
+            1=>(1,values[0]),
+            _=>(values[0], values[values.len()-1])
+        }
     }
 }

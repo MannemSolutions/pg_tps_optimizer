@@ -6,13 +6,13 @@ extern crate chrono;
 mod cli;
 mod dsn;
 mod generic;
+mod threader;
 
 use chrono::Utc;
 use postgres::{Client, tls};
 use std::time::Duration;
 use std::thread;
 use std::sync::{mpsc, RwLock, Arc};
-use std::str::FromStr;
 
 use crate::dsn::Dsn;
 
@@ -29,94 +29,6 @@ struct TransactDataSample {
 fn duration(start: chrono::NaiveDateTime, end: chrono::NaiveDateTime) -> f32 {
     let duration_nanos = (end - start).num_nanoseconds().unwrap();
     duration_nanos as f32 / 10.0_f32.powi(9)
-}
-
-fn postgres_param(argument: &Result<String, args::ArgsError>, env_var_key: &String, default: &String) -> String {
-    let mut return_val: String;
-    match env::var(env_var_key) {
-        Ok(val) => return_val = val,
-        Err(_err) => return_val = default.to_string(),
-    }
-    if return_val.is_empty() {
-        return_val = default.to_string()
-    }
-    match argument {
-        Ok(val) => return_val = val.to_string(),
-        Err(_err) => (),
-    }
-    return_val
-}
-
-fn postgres_connect_string(args: args::Args) -> String {
-    let mut connect_string: String;
-    let pgport = postgres_param(&args.value_of("port"), &"PGPORT".to_string(), &"5432".to_string());
-    let pguser = postgres_param(&args.value_of("user"), &"PGUSER".to_string(), &"postgres".to_string());
-    let pghost = postgres_param(&args.value_of("host"), &"PGHOST".to_string(), &"localhost".to_string());
-    let pgpassword = postgres_param(&args.value_of("password"), &"PGPASSWORD".to_string(), &"".to_string());
-    let pgdatabase = postgres_param(&args.value_of("dbname"), &"PGDATABASE".to_string(), &pguser);
-//  postgresql://[user[:password]@][netloc][:port][/dbname][?param1=value1&...]
-    connect_string = "postgres://".to_string();
-    if ! pguser.is_empty() {
-        connect_string.push_str(&pguser);
-        if ! pgpassword.is_empty() {
-            connect_string.push_str(":");
-            connect_string.push_str(&pgpassword);
-        }
-        connect_string.push_str("@");
-    }
-    connect_string.push_str(&pghost);
-    if ! pgport.is_empty() {
-        connect_string.push_str(":");
-        connect_string.push_str(&pgport);
-    }
-    if ! pgdatabase.is_empty() {
-        connect_string.push_str("/");
-        connect_string.push_str(&pgdatabase);
-    }
-    connect_string
-}
-
-fn connect(connect_string: String, initialization: u8, thread_id: u32) -> Result<Client, postgres::Error> {
-
-    let mut client: Client;
-    loop {
-        match Client::connect(connect_string.as_str(), tls::NoTls) {
-            Ok(my_conn) => client = my_conn,
-            Err(_) => {
-                //println!("Error: {}", &err);
-                continue;
-            },
-        };
-        break;
-    }
-
-    if initialization == 1 {
-        client.execute("create temporary table my_temp_table (id oid)", &[])?;
-        client.execute("insert into my_temp_table values($1)", &[&thread_id])?;
-    } else if initialization == 2 {
-        client.execute(&format!("create table if not exists my_table_{} (id oid)", thread_id), &[])?;
-        client.execute(&format!("truncate my_table_{}", thread_id), &[])?;
-        client.execute(&format!("insert into my_table_{} values($1)", thread_id), &[&thread_id])?;
-    }
-
-    Ok(client)
-}
-
-fn reconnect(connect_string: &String, initialization: u8, thread_id: u32) -> Client {
-
-    let client: Client;
-    loop {
-        match connect(connect_string.clone(), initialization, thread_id) {
-            Ok(my_client) => client = my_client,
-            Err(_) => {
-                //println!("Error: {}", &err);
-                continue;
-            },
-        };
-        break;
-    }
-
-    client
 }
 
 fn sample( client: &mut Client, query: &String, tps: u64, stype: &String, thread_id: u32) -> Result<u64, postgres::Error> {
@@ -148,99 +60,6 @@ fn sample( client: &mut Client, query: &String, tps: u64, stype: &String, thread
     Ok(num_queries)
 }
 
-fn thread_procedure(thread_id: u32, tx: mpsc::Sender<u64>, thread_lock: std::sync::Arc<std::sync::RwLock<bool>> ) -> Result<(), Box<dyn std::error::Error>>{
-    // println!("Thread {} started", thread_id);
-    let args = parse_args()?;
-
-    let qtype: String = args.value_of("query_type")?;
-    let stype: String = args.value_of("statement_type")?;
-    let query: String;
-    match qtype.as_ref() {
-        "empty" => query = "".to_string(),
-        "simple" => query = "SELECT $1".to_string(),
-        "temp_read" => query = "SELECT ID from my_temp_table WHERE ID = $1".to_string(),
-        "temp_write" => query = "UPDATE my_temp_table set ID = $1 WHERE ID = $1".to_string(),
-        "read" => query = format!("SELECT ID from my_table_{} WHERE ID = $1", thread_id).to_string(),
-        "write" => query = format!("UPDATE my_table_{} set ID = $1 WHERE ID = $1", thread_id).to_string(),
-        _ => panic!("Option QTYPE should be one of empty, simple, read, write (not {}).", qtype),
-    }
-
-    let connect_string = postgres_connect_string(args);
-    if thread_id == 0 {
-        println!("Connectstring: {}", connect_string);
-        println!("Query: {}", query);
-        println!("SType: {}", stype);
-    }
-    let mut tps: u64 = 1000;
-    let mut initialization: u8 = 0;
-
-    if qtype == "temp_read" || qtype == "temp_write" {
-        initialization = 1;
-    } else if qtype == "read" || qtype == "write" {
-        initialization = 2;
-    }
-
-    let mut conn: Client;
-    let mut num_queries: u64 = 0;
-    //Sleep 100 milliseconds
-    let sleeptime = std::time::Duration::from_millis(100);
-    conn = reconnect(&connect_string, initialization, thread_id);
-
-    loop {
-        if let Ok(done) = thread_lock.read() {
-            // done is true when main thread decides we are there
-            if *done {
-                break;
-            }
-        }
-        let start = Utc::now().naive_utc();
-        match sample(&mut conn, &query, tps, &stype, thread_id) {
-            Ok(sample_tps) => {
-                tx.send(sample_tps)?;
-                num_queries = sample_tps;
-            },
-            Err(_) => {
-                //println!("Error: {}", &err);
-                thread::sleep(sleeptime);
-                conn = reconnect(&connect_string, initialization, thread_id);
-            },
-        };
-        let end = Utc::now().naive_utc();
-        tps = (num_queries as f32 / duration(start, end)) as u64;
-    }
-    Ok(())
-}
-
-fn downscale(rx: mpsc::Receiver<u64>, tx: mpsc::Sender<u64>, thread_lock: std::sync::Arc<std::sync::RwLock<bool>>) -> Result<(), Box<dyn std::error::Error>>{
-    //With more threads (> 500) we have some issues, where the one main thread cannot consume messages fast enough.
-    //This function can downscal from 25 messages to 1 message.
-    let mut sum: u64 = 0;
-    let wait = Duration::from_millis(10);
-    loop {
-        match thread_lock.read() {
-            Ok(done) => {
-                if *done {
-                        break;
-                }
-            },
-            Err(_err) => (),
-        };
-        for _ in 0..25 {
-            match rx.recv_timeout(wait) {
-                Ok(sample_tps) => {
-                    sum += sample_tps;
-                },
-                Err(_err) => (),
-            };
-        }
-        match tx.send(sum) {
-            Ok(_) => sum = 0,
-            Err(_err) => (),
-        };
-    }
-    Ok(())
-}
-
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut sum_trans: u64;
     let mut threads_avg_tps: f32;
@@ -260,44 +79,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
          FROM pg_stat_database) as transacts")?;
 
     println!("Initializing all threads");
-    let num_threads: u32 = 0;
     let (min_threads, max_threads) = args.range_min_max();
     let mut threads = Vec::with_capacity(max_threads as usize);
-    if num_threads < 200 {
-        for thread_id in 0..num_threads {
-            let thread_tx = tx.clone();
-            let thread_lock = rw_lock.clone();
-            let thread_handle =  thread::Builder::new().name(format!("child{}", thread_id).to_string()).spawn(move || {
-                thread_procedure(thread_id, thread_tx, thread_lock).unwrap();
-            }).unwrap();
-            threads.push(thread_handle);
-        }
-        num_samples = num_threads / 10;
-    } else {
-        let (tmp_tx, tmp_rx) = mpsc::channel();
-        #[allow(unused_assignments)]
-        let mut downscale_rx: mpsc::Receiver<u64> = tmp_rx;
-        let mut downscale_tx: mpsc::Sender<u64> = tmp_tx;
-        for thread_id in 0..num_threads {
-            if thread_id % 100 == 0 {
-                let (tmp_tx, tmp_rx) = mpsc::channel();
-                downscale_rx = tmp_rx;
-                downscale_tx = tmp_tx;
-                let thread_lock = rw_downscaler_lock.clone();
-                let thread_tx = tx.clone();
-                let thread_handle =  thread::Builder::new().name(format!("downscale{}", thread_id).to_string()).spawn(move || {
-                    downscale(downscale_rx, thread_tx, thread_lock).unwrap();
-                }).unwrap();
-                downscale_threads.push(thread_handle);
-            }
-            let thread_tx = downscale_tx.clone();
-            let thread_lock = rw_lock.clone();
-            let thread_handle =  thread::Builder::new().name(format!("child{}", thread_id).to_string()).spawn(move || {
-                thread_procedure(thread_id, thread_tx, thread_lock).unwrap();
-            }).unwrap();
-            threads.push(thread_handle);
-        }
-        num_samples = num_threads / 250;
+    let num_samples: u32;
+    let num_threads: u32 = 0;
+    let threader = threader::Threader::get_args(max_threads);
+
+    println!("Date       time (sec)      | Sample period |          Threads         |              Postgres         |");
+    println!("                           |               | Average TPS | Total TPS  |        tps   |          wal/s |");
+    //        2019-06-24 11:33:23.437502       1.018000      105.090     10508.950      16888.312            0.000
+
+    for num_threads in min_threads..max_threads {
+        threader.rescale(num_threads);
     }
 
     if num_samples < 1 {
@@ -313,9 +106,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let mut wait = Duration::from_millis(100);
 
-    println!("Date       time (sec)      | Sample period |          Threads         |              Postgres         |");
-    println!("                           |               | Average TPS | Total TPS  |        tps   |          wal/s |");
-    //        2019-06-24 11:33:23.437502       1.018000      105.090     10508.950      16888.312            0.000
 
     for x in 0..num_secs {
         let start = Utc::now().naive_utc();
@@ -356,18 +146,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         prev_sample = sample;
     }
 
-    let main_lock = rw_lock.clone();
-    if let Ok(mut done) = main_lock.write() {
-        *done = true;
-    }
-
-    wait = num_threads * wait / 10;
-
-    println!("Lets give the threads some time to stop");
-    thread::sleep(wait);
+    println!("Stopping, but lets give the threads some time to stop");
+    threader.finish();
 
     println!("Finished");
     ::std::process::exit(0);
-
-    //Ok(())
 }

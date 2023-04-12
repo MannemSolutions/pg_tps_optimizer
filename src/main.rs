@@ -7,14 +7,15 @@ mod cli;
 mod dsn;
 mod generic;
 mod threader;
+mod fibonacci;
 
 use chrono::Utc;
-use postgres::{Client, tls};
+use postgres::Client;
 use std::time::Duration;
-use std::thread;
 use std::sync::{mpsc, RwLock, Arc};
 
 use crate::dsn::Dsn;
+use crate::fibonacci::Fibonacci;
 
 const PROGRAM_DESC: &'static str = "generate cpu load on a Postgres cluster, and output the TPS.";
 const PROGRAM_NAME: &'static str = "pg_cpu_load";
@@ -82,15 +83,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (min_threads, max_threads) = args.range_min_max();
     let mut threads = Vec::with_capacity(max_threads as usize);
     let num_samples: u32;
-    let num_threads: u32 = 0;
-    let threader = threader::Threader::get_args(max_threads);
+    let threader = threader::Threader::get_args(max_threads, Dsn::from_string(args.dsn.as_str()));
 
     println!("Date       time (sec)      | Sample period |          Threads         |              Postgres         |");
     println!("                           |               | Average TPS | Total TPS  |        tps   |          wal/s |");
     //        2019-06-24 11:33:23.437502       1.018000      105.090     10508.950      16888.312            0.000
 
-    for num_threads in min_threads..max_threads {
-        threader.rescale(num_threads);
+    for i in Fibonacci::new(u32::from(1), u32::from(1)) {
+        if i < min_threads {
+            continue;
+        }
+        if i > max_threads {
+            continue;
+        }
+        for num_threads in min_threads..max_threads {
+            threader.rescale(num_threads);
+        }
+
     }
 
     if num_samples < 1 {
@@ -104,9 +113,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         wal_bytes: 0.0_f32,
         num_transactions: 0.0_f32,
     };
+
+
+
+
+
     let mut wait = Duration::from_millis(100);
 
 
+    // num_secs is the number of seconds that pg_cpu_load was running.
+    // This will be translated into running for every fibonaci between range.min and range.max
     for x in 0..num_secs {
         let start = Utc::now().naive_utc();
         let finished = start + sample_period;

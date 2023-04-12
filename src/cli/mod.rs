@@ -62,7 +62,7 @@ impl Params {
     }
     pub fn range_min_max(self) -> (u32, u32) {
         let re = regex::Regex::new(r"\d+)").unwrap();
-        let values: Vec<u32> = re.find_iter(self.range.as_str())
+        let values: Vec<_> = re.find_iter(self.range.as_str())
             .filter_map(|digits| ( digits.as_str().parse().ok()))
             .collect();
         match values.len(){

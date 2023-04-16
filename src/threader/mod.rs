@@ -72,12 +72,16 @@ impl Threader {
                 }
                 let thread_tx = downscale_tx.clone();
                 let thread_lock = self.downscaler_lock.clone();
-                let thread_handle =  thread::Builder::new()
+                let thread_handle = thread::Builder::new()
                     .name(format!("child{}", thread_id).to_string())
                     .spawn(move || {
-                        let t = Thread::new(thread_id, thread_tx, thread_lock,
-                                            self.query, self.s_type, self.dsn);
-                        t.procedure().unwrap();
+                        Thread::new(thread_id,
+                                    thread_tx,
+                                    thread_lock,
+                                    self.query.as_str(),
+                                    self.s_type.as_str(),
+                                    self.dsn.clone())
+                            .procedure().unwrap();
                     }).unwrap();
                 self.threads.push(thread_handle);
             }
@@ -87,9 +91,15 @@ impl Threader {
             for thread_id in self.num_threads..new_threads {
                 let thread_tx = self.tx.clone();
                 let thread_lock = self.downscaler_lock.clone();
-                let thread_handle =  thread::Builder::new().name(format!("child{}", thread_id).to_string()).spawn(move || {
-                    let t = Thread::new(thread_id, thread_tx, thread_lock,
-                                       self.query, self.s_type, self.dsn );
+                let thread_handle =  thread::Builder::new()
+                    .name(format!("child{}", thread_id).to_string())
+                    .spawn(move || {
+                    let t = Thread::new(thread_id,
+                                        thread_tx,
+                                        thread_lock,
+                                        self.query.as_str(),
+                                        self.s_type.as_str(),
+                                        self.dsn.clone() );
                     t.procedure().unwrap();
                 }).unwrap();
                 self.threads.push(thread_handle);

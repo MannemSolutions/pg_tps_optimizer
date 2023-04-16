@@ -1,7 +1,7 @@
 use chrono::{Duration,DateTime,Utc};
 
-// A sample is one thread trying to run as many transactions as possiblei
-// in 100msec and keeping track in this struct.
+// A sample is one thread trying to run as many transactions as possible
+// for 100msec and keeping track of results
 pub struct Sample {
     transactions: u32,
     wait: Duration,
@@ -47,46 +47,60 @@ impl Sample {
         let num = self.transactions as i32;
         (self.end-self.start)/num
     }
+    // You can materialize a Sample into A Samples struct
+    pub fn to_samples(self) -> Samples {
+        Samples{
+            total_transactions: self.transactions,
+            total_waits: self.wait,
+            total_duration: self.end - self.start,
+            num_samples: 1,
+        }
+    }
 }
 
-// Samples is a collection of many samples processed by multiple threads
 pub struct Samples {
-    total_tps: f64,
+    total_transactions: u32,
     total_waits: Duration,
-    num_transactions: u32,
+    total_duration: Duration,
+    num_samples: u32,
 }
 
 impl Samples {
     // initialize a new without data
     pub fn new() -> Samples {
         Samples{
-            total_tps: 0_f64,
+            total_transactions: 0,
             total_waits: Duration::zero(),
-            num_transactions: 0_u32,
+            total_duration: Duration::zero(),
+            num_samples: 0,
         }
     }
-    // add a sample:
-    // - tps is accumulated (expecting that all samples ran in parallel)
-    // - waits is also accumulated (we waited this period on all transactions)
-    // - transactions is also accumulated
-    pub fn append(&self, sample: Sample) {
-        self.total_tps += sample.tps();
-        self.total_waits = self.total_waits + sample.waits();
-        self.num_transactions += sample.transactions;
-    }
+    // Combine two Samples (same time slice, different threads) into one
     pub fn add(&self, samples: Samples) {
-        self.total_tps += samples.total_tps;
+        self.total_transactions += samples.total_transactions;
         self.total_waits = self.total_waits + samples.total_waits;
-        self.num_transactions += samples.num_transactions;
+        self.total_duration = self.total_duration + samples.total_duration;
+        self.num_samples += samples.num_samples;
     }
-    // tot_tps is a sum of all tps's from all samples
-    pub fn tot_tps(self) -> f64 {
-        self.total_tps
+    // tot_tps is a sum of all tps's from all samples expecting they where
+    // running in tandem on a single threads
+    pub fn tot_tps_singlethread(self) -> f64 {
+        let mut duration: f64 = self.total_duration.num_nanoseconds().unwrap() as f64;
+        duration = duration / 1_000_000_000_f64;
+        f64::from(self.total_transactions) / duration
     }
-    // all waits divided by num transactions is wait/transaction
-    pub fn avg_latency(self) -> f64 {
-        let num = self.num_transactions as f64;
-        let mut waits: f64 = self.total_waits.num_nanoseconds().unwrap() as f64;
-        waits / num / 1_000_000_000_f64
+    // tot_tps is a sum of all tps's from all samples expecting they where
+    // running simultaneously on seperate threads
+    pub fn tot_tps_multithread(self) -> f64 {
+        let num_samples = self.num_samples as i32;
+        let mut duration: f64 = (self.total_duration / num_samples)
+            .num_nanoseconds().unwrap() as f64;
+        duration = duration / 1_000_000_000_f64;
+        f64::from(self.total_transactions) / duration
+    }
+    // avg latency is the average amount of waits that one transaction took
+    pub fn avg_latency(self) -> Duration {
+        let num_transactions = self.total_transactions as i32;
+        self.total_waits/num_transactions
     }
 }

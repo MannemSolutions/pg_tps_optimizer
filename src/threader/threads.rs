@@ -17,15 +17,18 @@ pub struct Thread {
 }
 
 impl Thread {
-    pub fn new(id: u32, tx: mpsc::Sender<Samples>,
-           thread_lock: std::sync::Arc<std::sync::RwLock<bool>>,
-           query: String, stype: String, dsn: dsn::Dsn) -> Thread {
+    pub fn new(id: u32,
+               tx: mpsc::Sender<Samples>,
+               thread_lock: std::sync::Arc<std::sync::RwLock<bool>>,
+               query: &str,
+               stype: &str,
+               dsn: dsn::Dsn) -> Thread {
         Thread {
             id,
             tx,
             thread_lock,
-            query,
-            stype,
+            query: query.to_string() ,
+            stype: stype.to_string(),
             dsn,
         }
 
@@ -49,9 +52,9 @@ impl Thread {
                 }
             }
             match sample(&mut client, &self.query, tps/10, &self.stype, self.id) {
-                Ok(sample) => {
-                    tps = sample.tot_tps() as u64;
-                    self.tx.send(sample)?;
+                Ok(samples) => {
+                    //tps = samples.tot_tps_singlethread() as u64;
+                    self.tx.send(samples)?;
                 },
                 Err(_) => {
                     //println!("Error: {}", &err);
@@ -97,9 +100,7 @@ fn sample(client: &mut Client, query: &String, num_queries: u64, stype: &String,
         s.increment(Utc::now()-start);
     }
     s.end();
-    let ss = Samples::new();
-    ss.append(s);
 
-    Ok(ss)
+    Ok(s.to_samples())
 }
 

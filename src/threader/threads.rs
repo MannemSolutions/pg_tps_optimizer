@@ -5,11 +5,9 @@ use chrono::Utc;
 use std::thread;
 use postgres::Client;
 
-use super::samples::Samples;
-
 pub struct Thread {
     id: u32,
-    tx: mpsc::Sender<Samples>,
+    tx: mpsc::Sender<Sample>,
     thread_lock: std::sync::Arc<std::sync::RwLock<bool>>,
     query: String,
     stype: String,
@@ -18,7 +16,7 @@ pub struct Thread {
 
 impl Thread {
     pub fn new(id: u32,
-               tx: mpsc::Sender<Samples>,
+               tx: mpsc::Sender<Sample>,
                thread_lock: std::sync::Arc<std::sync::RwLock<bool>>,
                query: &str,
                stype: &str,
@@ -42,7 +40,7 @@ impl Thread {
         let mut tps: u64 = 1000;
 
         //Sleep 100 milliseconds
-        let client = self.dsn.client();
+        let mut client = self.dsn.client();
 
         loop {
             if let Ok(done) = self.thread_lock.read() {
@@ -69,8 +67,8 @@ impl Thread {
 }
 
 
-fn sample(client: &mut Client, query: &String, num_queries: u64, stype: &String,
-          thread_id: u32) -> Result<Samples, postgres::Error> {
+fn sample(client: &mut Client, query: &String, mut num_queries: u64, stype: &String,
+          thread_id: u32) -> Result<Sample, postgres::Error> {
     if num_queries < 1 {
         num_queries = 1;
     }
@@ -101,6 +99,6 @@ fn sample(client: &mut Client, query: &String, num_queries: u64, stype: &String,
     }
     s.end();
 
-    Ok(s.to_samples())
+    Ok(s)
 }
 

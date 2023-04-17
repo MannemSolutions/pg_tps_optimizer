@@ -3,7 +3,7 @@ use std::thread;
 use std::thread::JoinHandle;
 use crate::dsn;
 use crate::threader::threads::Thread;
-use crate::threader::samples::Samples;
+use crate::threader::samples::{MultiSamples, Sample};
 use chrono::Utc;
 
 mod threads;
@@ -13,27 +13,21 @@ pub struct Threader {
     pub num_threads: u32,
     pub max_threads: u32,
     pub num_samples: u32,
-    downscale: bool,
     query: String,
     s_type: String,
-    tx: mpsc::Sender<Samples>,
-    rx: mpsc::Receiver<Samples>,
-    downscaler_lock: Arc<RwLock<bool>>,
+    tx: mpsc::Sender<Sample>,
+    rx: mpsc::Receiver<Sample>,
+    thread_lock: Arc<RwLock<bool>>,
     threads: Vec<JoinHandle<()>>,
     dsn: dsn::Dsn,
 }
 
 impl Threader {
     pub fn new(mut max_threads: u32, query: String, s_type: String, dsn: dsn::Dsn) -> Threader {
-        let downscale: bool;
-        let downscaler_lock: Arc<RwLock<bool>>;
         if max_threads < 1 {
             max_threads = 1000
         }
-        if max_threads > 200 {
-            downscale = true;
-            downscaler_lock = Arc::new(RwLock::new(false));
-        }
+        let thread_lock = Arc::new(RwLock::new(false));
         let (tx, rx) = mpsc::channel();
         let mut threads = Vec::with_capacity(max_threads as usize);
         Threader{
@@ -42,73 +36,37 @@ impl Threader {
             num_threads: 0,
             max_threads,
             num_samples: 0,
-            downscale,
             tx,
             rx,
-            downscaler_lock,
+            thread_lock,
             threads,
             dsn,
         }
     }
     pub fn rescale(&self, new_threads: u32)  {
-        if self.downscale {
-            let (tmp_tx, tmp_rx) = mpsc::channel();
-            #[allow(unused_assignments)]
-            let mut downscale_rx: mpsc::Receiver<Samples> = tmp_rx;
-            let mut downscale_tx: mpsc::Sender<Samples> = tmp_tx;
-            for thread_id in self.num_threads..new_threads {
-                if thread_id % 100 == 0 {
-                    let (tmp_tx, tmp_rx) = mpsc::channel();
-                    downscale_rx = tmp_rx;
-                    downscale_tx = tmp_tx;
-                    let thread_lock = self.downscaler_lock.clone();
-                    let thread_tx = self.tx.clone();
-                    let thread_handle =  thread::Builder::new()
-                        .name(format!("downscale{}", thread_id).to_string())
-                        .spawn(move || {
-                            downscale(downscale_rx, thread_tx, thread_lock).unwrap();
-                        }).unwrap();
-                    self.threads.push(thread_handle);
-                }
-                let thread_tx = downscale_tx.clone();
-                let thread_lock = self.downscaler_lock.clone();
-                let thread_handle = thread::Builder::new()
-                    .name(format!("child{}", thread_id).to_string())
-                    .spawn(move || {
-                        Thread::new(thread_id,
-                                    thread_tx,
-                                    thread_lock,
-                                    self.query.as_str(),
-                                    self.s_type.as_str(),
-                                    self.dsn.clone())
-                            .procedure().unwrap();
-                    }).unwrap();
-                self.threads.push(thread_handle);
-            }
-            self.num_threads = new_threads;
-            self.num_samples = new_threads / 250;
-        } else {
-            for thread_id in self.num_threads..new_threads {
-                let thread_tx = self.tx.clone();
-                let thread_lock = self.downscaler_lock.clone();
-                let thread_handle =  thread::Builder::new()
-                    .name(format!("child{}", thread_id).to_string())
-                    .spawn(move || {
-                    let t = Thread::new(thread_id,
-                                        thread_tx,
-                                        thread_lock,
-                                        self.query.as_str(),
-                                        self.s_type.as_str(),
-                                        self.dsn.clone() );
-                    t.procedure().unwrap();
+        let mut thread_lock: Arc<RwLock<bool>>;
+        let mut thread_tx: mpsc::Sender<Sample>;
+        let mut thread_handle: JoinHandle<()>;
+        for thread_id in self.num_threads..new_threads {
+            thread_tx = self.tx.clone();
+            thread_lock = self.thread_lock.clone();
+            thread_handle =  thread::Builder::new()
+                .name(format!("child{}", thread_id).to_string())
+                .spawn(move || {
+                    Thread::new(thread_id,
+                                thread_tx,
+                                thread_lock,
+                                self.query.as_str(),
+                                self.s_type.as_str(),
+                                self.dsn.clone() )
+                        .procedure().unwrap();
                 }).unwrap();
-                self.threads.push(thread_handle);
-            }
-            self.num_samples = new_threads / 10;
+            self.threads.push(thread_handle);
         }
+        self.num_samples = new_threads / 10;
     }
     pub fn finish(&self) {
-        let main_lock = self.downscaler_lock.clone();
+        let main_lock = self.thread_lock.clone();
         if let Ok(mut done) = main_lock.write() {
             *done = true;
         }
@@ -157,35 +115,31 @@ impl Threader {
             prev_sample = sample;
         }
     }
-}
-
-fn downscale(rx: mpsc::Receiver<Samples>, tx: mpsc::Sender<Samples>, thread_lock: std::sync::Arc<std::sync::RwLock<bool>>) -> Result<(), Box<dyn std::error::Error>>{
-    //With more threads (> 500) we have some issues, where the one main thread cannot consume messages fast enough.
-    //This function can downscale from 25 messages to 1 message.
-    let mut s = Samples::new();
-    let wait = std::time::Duration::from_millis(10);
-    loop {
-        match thread_lock.read() {
-            Ok(done) => {
-                if *done {
+    fn consume(self) -> MultiSamples{
+        //With more threads (> 500) we have some issues, where the one main thread cannot consume messages fast enough.
+        //This function can downscale from 25 messages to 1 message.
+        let mut s = MultiSamples::new();
+        let wait = std::time::Duration::from_millis(10);
+        loop {
+            match self.thread_lock.read() {
+                Ok(done) => {
+                    if *done {
                         break;
-                }
-            },
-            Err(_err) => (),
-        };
-        for _ in 0..25 {
-            match rx.recv_timeout(wait) {
-                Ok(samples) => {
-                    s.add(samples);
+                    }
                 },
                 Err(_err) => (),
             };
+            for _ in 0..25 {
+                match self.rx.recv_timeout(wait) {
+                    Ok(samples) => {
+                        s.add(samples.to_multi_samples());
+                    },
+                    Err(_err) => (),
+                };
+            }
         }
-        match tx.send(s) {
-            Ok(_) => s = Samples::new(),
-            Err(_err) => (),
-        };
+            s
     }
-    Ok(())
 }
+
 

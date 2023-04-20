@@ -1,10 +1,12 @@
+use std::collections::HashMap;
+use std::collections::hash_map::OccupiedEntry;
 use std::sync::{mpsc, RwLock, Arc};
 use std::thread;
 use std::thread::JoinHandle;
 use crate::dsn;
 use crate::threader::threads::Thread;
-use crate::threader::samples::{MultiSamples, Sample};
-use chrono::Utc;
+use crate::threader::samples::{MultiSamples, Sample, current_timeslice};
+use chrono::{Utc, Duration};
 
 mod threads;
 mod samples;
@@ -20,6 +22,33 @@ pub struct Threader {
     thread_lock: Arc<RwLock<bool>>,
     threads: Vec<JoinHandle<()>>,
     dsn: dsn::Dsn,
+    sliced_samples: HashMap<u32, MultiSamples>,
+}
+
+
+fn mean(data: Vec<f64>) -> Option<f64> {
+    let sum = data.iter().sum::<f64>() as f64;
+    let count = data.len();
+
+    match count {
+        positive if positive > 0 => Some(sum / count as f64),
+        _ => None,
+    }
+}
+
+fn std_deviation(data: Vec<f64>) -> Option<f64> {
+    match (mean(data), data.len()) {
+        (Some(data_mean), count) if count > 0 => {
+            let variance = data.iter().map(|value| {
+                let diff = data_mean - (*value as f64);
+
+                diff * diff
+            }).sum::<f64>() / count as f64;
+
+            Some(variance.sqrt())
+        },
+        _ => None
+    }
 }
 
 impl Threader {
@@ -41,29 +70,34 @@ impl Threader {
             thread_lock,
             threads,
             dsn,
+            sliced_samples: HashMap::new(),
         }
     }
     pub fn rescale(&self, new_threads: u32)  {
         let mut thread_lock: Arc<RwLock<bool>>;
-        let mut thread_tx: mpsc::Sender<Sample>;
+        let (thread_tx, rx) = mpsc::channel();
         let mut thread_handle: JoinHandle<()>;
         for thread_id in self.num_threads..new_threads {
             thread_tx = self.tx.clone();
             thread_lock = self.thread_lock.clone();
+            let d = self.dsn.clone();
+            let q = self.query.as_str();
+            let t = self.s_type.as_str();
             thread_handle =  thread::Builder::new()
                 .name(format!("child{}", thread_id).to_string())
                 .spawn(move || {
                     Thread::new(thread_id,
                                 thread_tx,
                                 thread_lock,
-                                self.query.as_str(),
-                                self.s_type.as_str(),
-                                self.dsn.clone() )
+                                q,
+                                t,
+                                d)
                         .procedure().unwrap();
                 }).unwrap();
             self.threads.push(thread_handle);
         }
-        self.num_samples = new_threads / 10;
+        self.num_threads = new_threads;
+        self.num_samples = self.num_threads / 10;
     }
     pub fn finish(&self) {
         let main_lock = self.thread_lock.clone();
@@ -76,45 +110,44 @@ impl Threader {
         thread::sleep(wait);
     }
 
-    fn wait_stable(self, max_wait: i64) {
-        let start_time = Utc::now();
-        while (Utc::now() - start_time).num_seconds() < max_wait {
-            let sum_trans = 0;
-            loop {
-                for _ in 0..num_samples {
-                    match rx.recv_timeout(wait) {
-                        Ok(sample_trans) => sum_trans += sample_trans,
-                        Err(_error) => break,
-                    }
-                }
-                if Utc::now().naive_utc() > finished {
-                    break;
-                }
+    fn wait_stable(&self, spread: f64, count: usize, max_wait: Duration) {
+        let timeslice = current_timeslice();
+        let current_mult_sample: MultiSamples = MultiSamples::new(timeslice);
+        let end_time = Utc::now()+max_wait;
+        let tps_list: Vec<f64>;
+        let latency_list: Vec<f64>;
+        while Utc::now() < end_time {
+            let multisample = self.consume();
+            self.sliced_samples
+                .entry(multisample.timeslice)
+                .and_modify(|s| s.add(multisample).unwrap())
+                .or_insert(multisample);
+            let current_mult_sample = self.sliced_samples
+                .entry(timeslice)
+                .or_insert(current_mult_sample);
+            if current_mult_sample.num_samples < self.num_samples {
+                tps_list.clear();
+                latency_list.clear();
+                continue;
             }
-            let end = Utc::now().naive_utc();
-            let calc_tps = sum_trans as f32 / duration(start, end);
-            threads_avg_tps = calc_tps / num_threads as f32;
+            let tps = current_mult_sample.tot_tps();
+            tps_list.insert(tps_list.len(), tps);
+            let latency = current_mult_sample.avg_latency();
+            latency_list.insert(latency_list.len(), latency.num_microseconds().unwrap() as f64);
+            if tps_list.len() < count {
+                continue
+            }
+            if tps_list.len() > count {
+                tps_list.remove(0);
+                latency_list.remove(0);
+            }
 
-            let rows = client.query(&stat_databases_sttmnt, &[&prev_sample.lsn])?;
-            assert_eq!(rows.len(), 1);
-            let row = rows.get(0).unwrap();
-            let sample = TransactDataSample {
-                samplemoment: row.get(0),
-                lsn: row.get(1),
-                wal_bytes: row.get(2),
-                num_transactions: row.get(3),
-            };
-            let now = sample.samplemoment;
-            if x > 1 {
-                let postgres_duration = duration(prev_sample.samplemoment, sample.samplemoment);
-                let postgres_wps = (sample.wal_bytes - prev_sample.wal_bytes) as f32 / postgres_duration;
-                let postgres_tps = (sample.num_transactions - prev_sample.num_transactions) as f32 / postgres_duration;
-                let thread_duration = (end-start).num_milliseconds() as f32 / 1000_f32;
-                println!("{0} {1:15.6} {2:>12.3} {3:>13.3} {4:>14.3} {5:>16.3}", now, thread_duration, threads_avg_tps, calc_tps, postgres_tps, postgres_wps);
+            if std_deviation(tps_list).unwrap() < spread && std_deviation(latency_list).unwrap() < spread {
             }
-            prev_sample = sample;
+
         }
     }
+
     fn consume(self) -> MultiSamples{
         //With more threads (> 500) we have some issues, where the one main thread cannot consume messages fast enough.
         //This function can downscale from 25 messages to 1 message.

@@ -13,6 +13,14 @@ pub struct Sample {
     end: DateTime<Utc>,
 }
 
+fn timeslice(when: DateTime<Utc>) -> u32 {
+    ((when - EPOCH).num_milliseconds()/200) as u32
+}
+
+pub fn current_timeslice() -> u32 {
+    ((chrono::Utc::now()- EPOCH).num_milliseconds()/200) as u32
+}
+
 impl Sample {
     // initialize a new sample with no data
     pub fn new() -> Sample {
@@ -34,25 +42,20 @@ impl Sample {
     // timeslices are defined as 'pockets of 200 miliseconds'.
     // this function returns the numer of pockets since EPOCH
     pub fn timeslice(self) -> u32 {
-        ((self.start - EPOCH).num_milliseconds()/200) as u32
+        timeslice(self.start)
         }
     // start sampling
-    pub fn start(self) -> Sample {
-        let mut s = self.clone();
-        s.start = chrono::Utc::now();
-        s
+    pub fn start(&self){
+        self.start = chrono::Utc::now();
     }
     // add a transaction (with the duration of it)
-    pub fn increment(self, wait: Duration) -> Sample {
+    pub fn increment(&self, wait: Duration) {
         self.transactions += 1;
         self.wait = self.wait + wait;
-        self
     }
     // stop sampling
-    pub fn end(self) -> Sample {
-        let mut s = self.clone();
-        s.end = chrono::Utc::now();
-        s
+    pub fn end(&self) {
+        self.end = chrono::Utc::now();
     }
     // how many transactions did we process per second
     pub fn tps(self) -> f64 {
@@ -85,11 +88,11 @@ impl Sample {
 // run on multiple threads. For efficiency it has a totally different memory structure,
 // which only has the summaries data from all added samples.
 pub struct MultiSamples {
-    timeslice: u32,
+    pub timeslice: u32,
     total_transactions: u32,
     total_waits: Duration,
     total_duration: Duration,
-    num_samples: u32,
+    pub num_samples: u32,
 }
 
 impl MultiSamples {
@@ -130,3 +133,4 @@ impl MultiSamples {
         self.total_waits/num_transactions
     }
 }
+

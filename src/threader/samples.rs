@@ -72,9 +72,9 @@ impl Sample {
         let num = self.transactions as i32;
         (self.end-self.start)/num
     }
-    // You can materialize a Sample into A MultiSamples struct
-    pub fn to_multi_samples(self) -> MultiSamples {
-        MultiSamples{
+    // You can materialize a Sample into A ParallelSample struct
+    pub fn to_multi_samples(self) -> ParallelSample {
+        ParallelSample{
             timeslice: self.timeslice(),
             total_transactions: self.transactions,
             total_waits: self.wait,
@@ -84,10 +84,10 @@ impl Sample {
     }
 }
 
-// MultiSamples are meant as a set of multiple samples within the same period
+// ParallelSample are meant as a set of multiple samples within the same period
 // run on multiple threads. For efficiency it has a totally different memory structure,
 // which only has the summaries data from all added samples.
-pub struct MultiSamples {
+pub struct ParallelSample {
     pub timeslice: u32,
     total_transactions: u32,
     total_waits: Duration,
@@ -95,10 +95,10 @@ pub struct MultiSamples {
     pub num_samples: u32,
 }
 
-impl MultiSamples {
+impl ParallelSample {
     // initialize a new without data
-    pub fn new(timeslice: u32) -> MultiSamples {
-        MultiSamples{
+    pub fn new(timeslice: u32) -> ParallelSample {
+        ParallelSample{
             timeslice,
             total_transactions: 0,
             total_waits: Duration::zero(),
@@ -106,8 +106,8 @@ impl MultiSamples {
             num_samples: 0,
         }
     }
-    // Combine two MultiSamples (same time slice, different threads) into one
-    pub fn add(&self, samples: MultiSamples) -> Result<(), &'static str>{
+    // Combine two ParallelSample (same time slice, different threads) into one
+    pub fn add(&self, samples: ParallelSample) -> Result<(), &'static str>{
         if self.timeslice != samples.timeslice {
             return Err("trying to combine samples of different timeslices")
         }
@@ -128,9 +128,91 @@ impl MultiSamples {
         f64::from(self.total_transactions) / duration
     }
     // avg latency is the average amount of waits over all samples contained
-    pub fn avg_latency(self) -> Duration {
-        let num_transactions = self.total_transactions as i32;
-        self.total_waits/num_transactions
+    pub fn avg_latency(self) -> f64 {
+        (self.total_waits.num_microseconds().unwrap() as f64)/(self.total_transactions as f64)
+    }
+    pub fn as_testresult(self) -> TestResult {
+        TestResult{
+            tps: self.tot_tps(),
+            latency: self.avg_latency(),
+        }
     }
 }
 
+pub struct TestResult {
+    tps: f64,
+    latency: f64,
+}
+
+impl TestResult {
+    fn between_spread(self, spread: f64) -> bool {
+        if self.tps > spread || self.latency > spread {
+            return false;
+        }
+        true
+    }
+}
+
+pub struct TestResults {
+    min: usize,
+    max: usize,
+    results: Vec<TestResult>,
+}
+
+impl TestResults {
+    fn mean(self) -> Option<TestResult> {
+        let sum_tps = self.results.iter().map(|tr| tr.tps).sum::<f64>() as f64;
+        let sum_latency = self.results.iter().map(|tr| tr.latency).sum::<f64>() as f64;
+        let count = self.results.len();
+
+        match count {
+            positive if positive > 0 => Some(
+                TestResult {
+                    tps: sum_tps/(count as f64),
+                    latency: sum_latency/(count as f64)
+                }
+                ),
+            _ => None,
+        }
+    }
+
+    fn std_deviation(self) -> Option<TestResult> {
+        match (self.mean(), self.results.len()) {
+            (Some(results), count) if count > 0 => {
+                let tps_variance = self.results.iter().map(|tr| {
+                    let tps_diff = results.tps -tr.tps;
+                    tps_diff * tps_diff
+                }).sum::<f64>() / count as f64;
+                let lat_variance = self.results.iter().map(|tr| {
+                    let lat_diff = results.latency -tr.latency;
+                    lat_diff * lat_diff
+                }).sum::<f64>() / count as f64;
+
+                Some(TestResult{
+                    tps: tps_variance.sqrt(),
+                    latency: lat_variance.sqrt(),
+                })
+            },
+            _ => None
+        }
+    }
+    pub fn clear(&self) {
+        self.results.clear();
+    }
+    pub fn append(&self, result: TestResult) {
+        self.results.insert(self.results.len(), result);
+    }
+    pub fn verify(&self, spread: f64) -> Option<TestResult> {
+            if self.results.len() < self.min {
+                return None
+            }
+            if self.results.len() > self.max {
+                self.results.remove(0);
+            }
+            let stdev = self.std_deviation().unwrap();
+            if stdev.between_spread(spread) {
+                return Some(stdev);
+            }
+            None
+    }
+}

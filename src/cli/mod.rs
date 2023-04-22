@@ -1,4 +1,7 @@
 use crate::generic;
+use crate::dsn::Dsn;
+use crate::threader::workload::Workload;
+use chrono::Duration;
 use structopt::StructOpt;
 use regex;
 
@@ -18,7 +21,7 @@ pub struct Params {
     /// Prepared queries
     #[structopt(short, long, help = "you can run prepared statements, or run direct statements")]
     #[structopt(long)]
-    pub prepare: bool,
+    pub prepared: bool,
 
     /// Transactional workload
     #[structopt(short, long, help = "you can run inside of a transaction or direct")]
@@ -27,6 +30,18 @@ pub struct Params {
     /// Testrange
     #[structopt(short, long, help = "you can set min and max of numclients if you know (default 1:1000)")]
     pub range: String,
+
+    /// spread
+    #[structopt(short, long, help = "you can set the spread that defines if the clients run stable.")]
+    pub spread: u32,
+
+    /// min_
+    #[structopt(short, long, help = "number of samples before we check the spread.")]
+    pub min_samples: u32,
+
+    /// max_wait
+    #[structopt(short, long, help = "Give it this ammount of seconds before we decide it wil never stabilize.")]
+    pub wait: Duration,
 }
 
 impl Params {
@@ -45,8 +60,8 @@ impl Params {
             &String::from("PGTPSQUERY"),
             &String::from("select * from pg_tables"),
         );
-        args.prepare = generic::get_env_bool(
-            args.prepare,
+        args.prepared = generic::get_env_bool(
+            args.prepared,
             &String::from("PGTPSPREPARED"),
         );
         args.transactional = generic::get_env_bool(
@@ -59,6 +74,9 @@ impl Params {
             &String::from("1:1000"),
         );
         args
+    }
+    pub fn as_workload(self) -> Workload {
+        Workload::new(Dsn::from_string(self.dsn.as_str()), self.query.to_string(), self.transactional, self.prepared)
     }
     pub fn range_min_max(self) -> (u32, u32) {
         let re = regex::Regex::new(r"\d+)").unwrap();

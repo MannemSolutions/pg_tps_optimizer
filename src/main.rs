@@ -79,11 +79,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         (select sum(xact_commit+xact_rollback)::real
          FROM pg_stat_database) as transacts")?;
 
-    println!("Initializing all threads");
+    println!("Initializing");
     let (min_threads, max_threads) = args.range_min_max();
     let mut threads = Vec::with_capacity(max_threads as usize);
     let num_samples: u32;
-    let threader = threader::Threader::get_args(max_threads, Dsn::from_string(args.dsn.as_str()));
+    let threader = threader::Threader::new(max_threads, args.as_workload());
 
     println!("Date       time (sec)      | Sample period |          Threads         |              Postgres         |");
     println!("                           |               | Average TPS | Total TPS  |        tps   |          wal/s |");
@@ -94,73 +94,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             continue;
         }
         if i > max_threads {
-            continue;
+            break;
         }
-        for num_threads in min_threads..max_threads {
-            threader.rescale(num_threads);
-        }
+        threader.rescale(num_threads);
+        threader.wait_stable(spread, count, max_wait)
 
     }
 
-    if num_samples < 1 {
-        num_samples = 1
-    }
-    let sample_period = chrono::Duration::seconds(1);
-
-    let mut prev_sample = TransactDataSample {
-        samplemoment: Utc::now().naive_utc(),
-        lsn: "0/0".to_string(),
-        wal_bytes: 0.0_f32,
-        num_transactions: 0.0_f32,
-    };
-
-
-
-
-
-    let mut wait = Duration::from_millis(100);
-
-
-    // num_secs is the number of seconds that pg_cpu_load was running.
-    // This will be translated into running for every fibonaci between range.min and range.max
-    for x in 0..num_secs {
-        let start = Utc::now().naive_utc();
-        let finished = start + sample_period;
-        sum_trans = 0;
-        loop {
-            for _ in 0..num_samples {
-                match rx.recv_timeout(wait) {
-                    Ok(sample_trans) => sum_trans += sample_trans,
-                    Err(_error) => break,
-                }
-            }
-            if Utc::now().naive_utc() > finished {
-                break;
-            }
-        }
-        let end = Utc::now().naive_utc();
-        let calc_tps = sum_trans as f32 / duration(start, end);
-        threads_avg_tps = calc_tps / num_threads as f32;
-
-        let rows = client.query(&stat_databases_sttmnt, &[&prev_sample.lsn])?;
-        assert_eq!(rows.len(), 1);
-        let row = rows.get(0).unwrap();
-        let sample = TransactDataSample {
-            samplemoment: row.get(0),
-            lsn: row.get(1),
-            wal_bytes: row.get(2),
-            num_transactions: row.get(3),
-        };
-        let now = sample.samplemoment;
-        if x > 1 {
-            let postgres_duration = duration(prev_sample.samplemoment, sample.samplemoment);
-            let postgres_wps = (sample.wal_bytes - prev_sample.wal_bytes) as f32 / postgres_duration;
-            let postgres_tps = (sample.num_transactions - prev_sample.num_transactions) as f32 / postgres_duration;
-            let thread_duration = (end-start).num_milliseconds() as f32 / 1000_f32;
             println!("{0} {1:15.6} {2:>12.3} {3:>13.3} {4:>14.3} {5:>16.3}", now, thread_duration, threads_avg_tps, calc_tps, postgres_tps, postgres_wps);
-        }
-        prev_sample = sample;
-    }
 
     println!("Stopping, but lets give the threads some time to stop");
     threader.finish();

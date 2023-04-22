@@ -1,46 +1,36 @@
 use std::sync::mpsc;
-use crate::dsn;
 use crate::threader::samples::Sample;
 use chrono::Utc;
 use std::thread;
 use postgres::Client;
 
+use super::workload::{Workload, WorkloadType};
+
 pub struct Thread {
     id: u32,
     tx: mpsc::Sender<Sample>,
     thread_lock: std::sync::Arc<std::sync::RwLock<bool>>,
-    query: String,
-    stype: String,
-    dsn: dsn::Dsn,
+    workload: Workload,
 }
 
 impl Thread {
     pub fn new(id: u32,
                tx: mpsc::Sender<Sample>,
                thread_lock: std::sync::Arc<std::sync::RwLock<bool>>,
-               query: &str,
-               stype: &str,
-               dsn: dsn::Dsn) -> Thread {
-        Thread {
-            id,
-            tx,
-            thread_lock,
-            query: query.to_string() ,
-            stype: stype.to_string(),
-            dsn,
-        }
+               workload: Workload,
+               ) -> Thread {
+        Thread {id, tx, thread_lock, workload}
 
     }
     pub fn procedure(self) -> Result<(), Box<dyn std::error::Error>>{
 
         if self.id == 0 {
-            println!("Query: {}", self.query);
-            println!("SType: {}", self.stype);
+            println!("{0}", self.workload.as_string());
         }
         let mut tps: u64 = 1000;
 
         //Sleep 100 milliseconds
-        let mut client = self.dsn.client();
+        let mut client = self.workload.client();
 
         loop {
             if let Ok(done) = self.thread_lock.read() {
@@ -49,7 +39,7 @@ impl Thread {
                     break;
                 }
             }
-            match sample(&mut client, &self.query, tps/10, &self.stype, self.id) {
+            match sample(&mut client, self.workload.w_type(), tps/10, self.id) {
                 Ok(samples) => {
                     //tps = samples.tot_tps_singlethread() as u64;
                     self.tx.send(samples)?;
@@ -58,7 +48,7 @@ impl Thread {
                     //println!("Error: {}", &err);
                     let sleeptime = std::time::Duration::from_millis(100);
                     thread::sleep(sleeptime);
-                    client = self.dsn.client();
+                    client = self.workload.client();
                 },
             };
         }
@@ -67,33 +57,38 @@ impl Thread {
 }
 
 
-fn sample(client: &mut Client, query: &String, mut num_queries: u64, stype: &String,
-          thread_id: u32) -> Result<Sample, postgres::Error> {
+fn sample(client: &mut Client, w_type: WorkloadType, mut num_queries: u64, thread_id: u32) -> Result<Sample, postgres::Error> {
     if num_queries < 1 {
         num_queries = 1;
     }
     let s = Sample::new();
+    let query = "";
 
     for _x in 1..num_queries {
         let start = Utc::now();
-        if stype == "prepared" {
-            let prep = client.prepare(query)?;
-            let _row = client.query(&prep, &[&thread_id]);
-        } else if stype == "transactional" {
-            let mut trans = client.transaction()?;
-            if query != "" {
-                let _row = trans.query(query, &[&thread_id]);
+        match w_type {
+            WorkloadType::Prepared => {
+                let prep = client.prepare(query)?;
+                let _row = client.query(&prep, &[&thread_id]);
             }
-            let _res = trans.commit()?;
-        } else if stype == "prepared_transactional" {
-            let mut trans = client.transaction()?;
-            if query != "" {
-                let prep = trans.prepare(&query)?;
-                let _row = trans.query(&prep, &[&thread_id]);
+            WorkloadType::Transactional => {
+                let mut trans = client.transaction()?;
+                if query != "" {
+                    let _row = trans.query(query, &[&thread_id]);
+                }
+                let _res = trans.commit()?;
             }
-            let _res = trans.commit()?;
-        } else if query != "" {
-            let _row = &client.query(query, &[&thread_id]);
+            WorkloadType::PreparedTransactional => {
+                let mut trans = client.transaction()?;
+                if query != "" {
+                    let prep = trans.prepare(&query)?;
+                    let _row = trans.query(&prep, &[&thread_id]);
+                }
+                let _res = trans.commit()?;
+            }
+            WorkloadType::Default => {
+                let _row = &client.query(query, &[&thread_id]);
+            }
         }
         s.increment(Utc::now()-start);
     }

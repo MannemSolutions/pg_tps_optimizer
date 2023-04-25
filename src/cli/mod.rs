@@ -1,7 +1,7 @@
+use duration_string::DurationString;
 use crate::generic;
 use crate::dsn::Dsn;
 use crate::threader::workload::Workload;
-use chrono::Duration;
 use structopt::StructOpt;
 use regex;
 
@@ -33,7 +33,7 @@ pub struct Params {
 
     /// spread
     #[structopt(short, long, help = "you can set the spread that defines if the clients run stable.")]
-    pub spread: u32,
+    pub spread: f64,
 
     /// min_
     #[structopt(short, long, help = "number of samples before we check the spread.")]
@@ -41,7 +41,7 @@ pub struct Params {
 
     /// max_wait
     #[structopt(short, long, help = "Give it this ammount of seconds before we decide it wil never stabilize.")]
-    pub wait: Duration,
+    pub max_wait: DurationString,
 }
 
 impl Params {
@@ -75,10 +75,13 @@ impl Params {
         );
         args
     }
-    pub fn as_workload(self) -> Workload {
-        Workload::new(Dsn::from_string(self.dsn.as_str()), self.query.to_string(), self.transactional, self.prepared)
+    pub fn as_dsn(&self) -> Dsn {
+        Dsn::from_string(self.dsn.as_str())
     }
-    pub fn range_min_max(self) -> (u32, u32) {
+    pub fn as_workload(&self) -> Workload {
+        Workload::new(self.as_dsn(), self.query.to_string(), self.transactional, self.prepared)
+    }
+    pub fn range_min_max(&self) -> (u32, u32) {
         let re = regex::Regex::new(r"\d+)").unwrap();
         let values: Vec<_> = re.find_iter(self.range.as_str())
             .filter_map(|digits| ( digits.as_str().parse().ok()))

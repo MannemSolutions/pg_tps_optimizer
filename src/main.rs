@@ -5,17 +5,15 @@ extern crate chrono;
 
 mod cli;
 mod dsn;
+mod pg_sampler;
 mod generic;
 mod threader;
 mod fibonacci;
 
-use chrono::Utc;
 use postgres::Client;
-use std::time::Duration;
-use std::sync::{mpsc, RwLock, Arc};
 
-use crate::dsn::Dsn;
 use crate::fibonacci::Fibonacci;
+use crate::threader::workload::Workload;
 
 const PROGRAM_DESC: &'static str = "generate cpu load on a Postgres cluster, and output the TPS.";
 const PROGRAM_NAME: &'static str = "pg_cpu_load";
@@ -62,46 +60,41 @@ fn sample( client: &mut Client, query: &String, tps: u64, stype: &String, thread
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut sum_trans: u64;
-    let mut threads_avg_tps: f32;
     let args = cli::Params::get_args();
 
-    let (tx, rx) = mpsc::channel();
-    //let rw_lock = Arc::new(RwLock::new(true));
-    let rw_lock = Arc::new(RwLock::new(false));
-    let rw_downscaler_lock = Arc::new(RwLock::new(false));
-
-    let client = Dsn::from_string(args.dsn.as_str()).client();
-    let stat_databases_sttmnt = client.prepare(
-        "SELECT now()::timestamp as samplemmoment,
-        pg_current_wal_lsn()::varchar as lsn,
-        (pg_current_wal_lsn() - $1::varchar::pg_lsn)::real as walbytes,
-        (select sum(xact_commit+xact_rollback)::real
-         FROM pg_stat_database) as transacts")?;
 
     println!("Initializing");
     let (min_threads, max_threads) = args.range_min_max();
-    let mut threads = Vec::with_capacity(max_threads as usize);
-    let num_samples: u32;
-    let threader = threader::Threader::new(max_threads, args.as_workload());
+    let w: Workload = args.as_workload();
+    let threader = threader::Threader::new(max_threads, w);
+    let mut sampler = pg_sampler::PgSampler::new(args.as_dsn())?;
+    sampler.next()?;
 
-    println!("Date       time (sec)      | Sample period |          Threads         |              Postgres         |");
-    println!("                           |               | Average TPS | Total TPS  |        tps   |          wal/s |");
-    //        2019-06-24 11:33:23.437502       1.018000      105.090     10508.950      16888.312            0.000
+    println!("Date       time            | Clients |        Perfrormance        |         Postgres        |");
+    println!("                           |         |   TPS     | Latency (msec) |    TPS     |  wal(kB)/s |");
+    //        2019-06-24 11:33:23.437502 |       1 | 2.105.090 |     10.121     | 2.168.312  | 1.105.131  |
 
-    for i in Fibonacci::new(u32::from(1), u32::from(1)) {
-        if i < min_threads {
+    for num_threads in Fibonacci::new(1_u32, 1_32) {
+        if num_threads < min_threads {
             continue;
         }
-        if i > max_threads {
+        if num_threads > max_threads {
             break;
         }
         threader.rescale(num_threads);
-        threader.wait_stable(spread, count, max_wait)
-
+        let d: chrono::Duration = chrono::Duration::from_std(args.max_wait.into())?;
+        match threader.wait_stable(args.spread, args.min_samples as usize, d) {
+            Some(result) => {
+                sampler.next()?;
+                println!("{0} {1:15.6} {2:>12.3} {3:>13.3} {4:>14.3} {5:>16.3}",
+                      chrono::offset::Local::now(), num_threads, result.tps, result.latency, sampler.tps(), sampler.wal_per_sec())
+            },
+            None =>
+                println!("{0} {1:15.6} {2:>12.3} {3:>13.3} {4:>14.3} {5:>16.3}",
+                      chrono::offset::Local::now(), num_threads, "?", "?", "?", "?"),
+        }
     }
 
-            println!("{0} {1:15.6} {2:>12.3} {3:>13.3} {4:>14.3} {5:>16.3}", now, thread_duration, threads_avg_tps, calc_tps, postgres_tps, postgres_wps);
 
     println!("Stopping, but lets give the threads some time to stop");
     threader.finish();

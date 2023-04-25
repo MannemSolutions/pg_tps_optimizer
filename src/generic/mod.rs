@@ -14,8 +14,8 @@ pub fn get_env_bool(val: bool, env_key: &str) -> bool {
     if val {
         return val;
     }
-    if let Ok(env_val) = env::var(env_key) {
-        return val;
+    if let Ok(_) = env::var(env_key) {
+        return true;
     }
     false
 }

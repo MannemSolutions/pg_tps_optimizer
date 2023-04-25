@@ -1,12 +1,10 @@
-use num::Integer;
-
-pub struct Fibonacci<T: Integer> {
-    curr: T,
-    next: T,
+pub struct Fibonacci {
+    curr: u32,
+    next: u32,
 }
 
-impl <T: Integer> Iterator for Fibonacci<T> {
-    type Item = T;
+impl Iterator for Fibonacci {
+    type Item = u32;
     fn next(&mut self) -> Option<Self::Item> {
         let new_next = self.curr + self.next;
 
@@ -17,17 +15,17 @@ impl <T: Integer> Iterator for Fibonacci<T> {
     }
 }
 
-impl <T: Integer> Fibonacci<T> {
-    pub fn new(curr: T, next: T) -> Fibonacci<T> {
+impl Fibonacci {
+    pub fn new(curr: u32, next: u32) -> Fibonacci {
         Fibonacci{
             curr,
             next,
         }
     }
-    pub fn list(curr: T, next: T, count: usize) -> Vec<T> {
+    pub fn list(curr: u32, next: u32, count: usize) -> Vec<u32> {
         Fibonacci::new(curr, next).take(count).collect()
     }
-    pub fn value(curr: T, next: T, number: usize) -> T {
+    pub fn value(curr: u32, next: u32, number: usize) -> u32 {
         Fibonacci::new(curr, next).take(number).last().unwrap()
     }
 }

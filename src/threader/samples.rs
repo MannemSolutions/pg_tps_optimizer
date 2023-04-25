@@ -140,8 +140,8 @@ impl ParallelSample {
 }
 
 pub struct TestResult {
-    tps: f64,
-    latency: f64,
+    pub tps: f64,
+    pub latency: f64,
 }
 
 impl TestResult {

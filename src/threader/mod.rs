@@ -26,7 +26,7 @@ pub struct Threader {
 }
 
 
-fn mean(data: Vec<f64>) -> Option<f64> {
+fn mean(data: &Vec<f64>) -> Option<f64> {
     let sum = data.iter().sum::<f64>() as f64;
     let count = data.len();
 
@@ -37,7 +37,7 @@ fn mean(data: Vec<f64>) -> Option<f64> {
 }
 
 fn std_deviation(data: Vec<f64>) -> Option<f64> {
-    match (mean(data), data.len()) {
+    match (mean(&data), data.len()) {
         (Some(data_mean), count) if count > 0 => {
             let variance = data.iter().map(|value| {
                 let diff = data_mean - (*value as f64);
@@ -58,7 +58,7 @@ impl Threader {
         }
         let thread_lock = Arc::new(RwLock::new(false));
         let (tx, rx) = mpsc::channel();
-        let mut threads = Vec::with_capacity(max_threads as usize);
+        let threads = Vec::with_capacity(max_threads as usize);
         Threader{
             workload,
             num_threads: 0,
@@ -71,12 +71,11 @@ impl Threader {
             sliced_samples: HashMap::new(),
         }
     }
-    pub fn rescale(&self, new_threads: u32)  {
+    pub fn scaleup(&mut self, new_threads: u32)  {
         let mut thread_lock: Arc<RwLock<bool>>;
-        let (thread_tx, rx) = mpsc::channel();
         let mut thread_handle: JoinHandle<()>;
         for thread_id in self.num_threads..new_threads {
-            thread_tx = self.tx.clone();
+            let thread_tx = self.tx.clone();
             thread_lock = self.thread_lock.clone();
             let workload: Workload = self.workload.clone();
             thread_handle =  thread::Builder::new()
@@ -104,12 +103,15 @@ impl Threader {
         thread::sleep(wait);
     }
 
-    pub fn wait_stable(&self, spread: f64, count: usize, max_wait: Duration) -> Option<TestResult> {
+    pub fn wait_stable(&mut self, spread: f64, count: usize, max_wait: Duration) -> Option<TestResult> {
         let timeslice = current_timeslice();
         let current_mult_sample: ParallelSample = ParallelSample::new(timeslice);
         let end_time = Utc::now()+max_wait;
-        let results: TestResults;
-        while Utc::now() < end_time {
+        let mut results = TestResults::new(count, count+1);
+        for _ in 1..count {
+            if Utc::now() > end_time {
+                break;
+            }
             let multisample = self.consume();
             self.sliced_samples
                 .entry(multisample.timeslice)
@@ -128,7 +130,7 @@ impl Threader {
         None
     }
 
-    fn consume(self) -> ParallelSample {
+    fn consume(&self) -> ParallelSample {
         //With more threads (> 500) we have some issues, where the one main thread cannot consume messages fast enough.
         //This function can downscale from 25 messages to 1 message.
         let mut s = ParallelSample::new(current_timeslice());

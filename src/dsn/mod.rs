@@ -43,13 +43,6 @@ impl Dsn {
         }
         Dsn { kv, ssl_mode: self.ssl_mode.to_string() }
     }
-    pub fn merge(self, with: Dsn) -> Dsn {
-        let mut kv: HashMap<String, String> = HashMap::new();
-        kv.extend(with.kv);
-        kv.extend(self.kv);
-        let ssl_mode = self.ssl_mode.to_string();
-        Dsn { kv, ssl_mode }
-    }
     pub fn cleanse(self) -> Dsn {
         let mut kv: HashMap<String, String> = HashMap::new();
         kv.extend(self.kv);

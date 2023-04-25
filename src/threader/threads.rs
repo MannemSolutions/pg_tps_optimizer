@@ -27,7 +27,7 @@ impl Thread {
         if self.id == 0 {
             println!("{0}", self.workload.as_string());
         }
-        let mut tps: u64 = 1000;
+        let mut tps: f64 = 1000_f64;
 
         //Sleep 100 milliseconds
         let mut client = self.workload.client();
@@ -39,10 +39,11 @@ impl Thread {
                     break;
                 }
             }
-            match sample(&mut client, self.workload.w_type(), tps/10, self.id) {
+            match sample(&mut client, self.workload.w_type(), tps/10_f64, self.id) {
                 Ok(samples) => {
                     //tps = samples.tot_tps_singlethread() as u64;
                     self.tx.send(samples)?;
+                    tps = samples.tps();
                 },
                 Err(_) => {
                     //println!("Error: {}", &err);
@@ -57,14 +58,14 @@ impl Thread {
 }
 
 
-fn sample(client: &mut Client, w_type: WorkloadType, mut num_queries: u64, thread_id: u32) -> Result<Sample, postgres::Error> {
-    if num_queries < 1 {
-        num_queries = 1;
+fn sample(client: &mut Client, w_type: WorkloadType, mut num_queries: f64, thread_id: u32) -> Result<Sample, postgres::Error> {
+    if num_queries < 1_f64 {
+        num_queries = 1_f64;
     }
-    let s = Sample::new();
+    let mut s = Sample::new();
     let query = "";
 
-    for _x in 1..num_queries {
+    for _x in 1..(num_queries as u64) {
         let start = Utc::now();
         match w_type {
             WorkloadType::Prepared => {

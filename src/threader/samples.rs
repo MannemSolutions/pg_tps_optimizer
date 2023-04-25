@@ -1,7 +1,4 @@
-use chrono::{Duration,DateTime,Utc};
-use chrono::prelude::*;
-
-const EPOCH: DateTime<Utc> = Utc.timestamp_millis_opt(0).unwrap();
+use chrono::{Duration,DateTime,Utc, TimeZone};
 
 
 // A sample is one thread trying to run as many transactions as possible
@@ -14,11 +11,19 @@ pub struct Sample {
 }
 
 fn timeslice(when: DateTime<Utc>) -> u32 {
-    ((when - EPOCH).num_milliseconds()/200) as u32
+    ((when - Utc.with_ymd_and_hms(1970, 1, 1, 0, 0, 0).unwrap()).num_milliseconds()/200) as u32
 }
 
 pub fn current_timeslice() -> u32 {
-    ((chrono::Utc::now()- EPOCH).num_milliseconds()/200) as u32
+    timeslice(chrono::Utc::now())
+}
+
+impl Copy for Sample { }
+
+impl Clone for Sample {
+    fn clone(&self) -> Sample {
+        *self
+    }
 }
 
 impl Sample {
@@ -31,30 +36,18 @@ impl Sample {
             end: chrono::Utc::now(),
         }
     }
-    fn clone(self) -> Sample {
-        Sample{
-            transactions: self.transactions,
-            wait: self.wait.clone(),
-            start: self.start.clone(),
-            end: self.end.clone(),
-        }
-    }
     // timeslices are defined as 'pockets of 200 miliseconds'.
     // this function returns the numer of pockets since EPOCH
-    pub fn timeslice(self) -> u32 {
+    pub fn timeslice(&self) -> u32 {
         timeslice(self.start)
         }
-    // start sampling
-    pub fn start(&self){
-        self.start = chrono::Utc::now();
-    }
     // add a transaction (with the duration of it)
-    pub fn increment(&self, wait: Duration) {
+    pub fn increment(&mut self, wait: Duration) {
         self.transactions += 1;
         self.wait = self.wait + wait;
     }
     // stop sampling
-    pub fn end(&self) {
+    pub fn end(&mut self) {
         self.end = chrono::Utc::now();
     }
     // how many transactions did we process per second
@@ -95,6 +88,15 @@ pub struct ParallelSample {
     pub num_samples: u32,
 }
 
+impl Copy for ParallelSample { }
+
+impl Clone for ParallelSample {
+    fn clone(&self) -> ParallelSample {
+        *self
+    }
+}
+
+
 impl ParallelSample {
     // initialize a new without data
     pub fn new(timeslice: u32) -> ParallelSample {
@@ -107,7 +109,7 @@ impl ParallelSample {
         }
     }
     // Combine two ParallelSample (same time slice, different threads) into one
-    pub fn add(&self, samples: ParallelSample) -> Result<(), &'static str>{
+    pub fn add(&mut self, samples: ParallelSample) -> Result<(), &'static str>{
         if self.timeslice != samples.timeslice {
             return Err("trying to combine samples of different timeslices")
         }
@@ -120,7 +122,7 @@ impl ParallelSample {
 
     // tot_tps is a sum of all tps's from all samples expecting they where
     // running simultaneously on seperate threads
-    pub fn tot_tps(self) -> f64 {
+    pub fn tot_tps(&self) -> f64 {
         let num_samples = self.num_samples as i32;
         let mut duration: f64 = (self.total_duration / num_samples)
             .num_nanoseconds().unwrap() as f64;
@@ -128,10 +130,10 @@ impl ParallelSample {
         f64::from(self.total_transactions) / duration
     }
     // avg latency is the average amount of waits over all samples contained
-    pub fn avg_latency(self) -> f64 {
+    pub fn avg_latency(&self) -> f64 {
         (self.total_waits.num_microseconds().unwrap() as f64)/(self.total_transactions as f64)
     }
-    pub fn as_testresult(self) -> TestResult {
+    pub fn as_testresult(&self) -> TestResult {
         TestResult{
             tps: self.tot_tps(),
             latency: self.avg_latency(),
@@ -145,7 +147,7 @@ pub struct TestResult {
 }
 
 impl TestResult {
-    fn between_spread(self, spread: f64) -> bool {
+    fn between_spread(&self, spread: f64) -> bool {
         if self.tps > spread || self.latency > spread {
             return false;
         }
@@ -160,7 +162,14 @@ pub struct TestResults {
 }
 
 impl TestResults {
-    fn mean(self) -> Option<TestResult> {
+    pub fn new(min: usize, max: usize) -> TestResults {
+        TestResults{
+            min,
+            max,
+            results: Vec::new(),
+        }
+    }
+    fn mean(&self) -> Option<TestResult> {
         let sum_tps = self.results.iter().map(|tr| tr.tps).sum::<f64>() as f64;
         let sum_latency = self.results.iter().map(|tr| tr.latency).sum::<f64>() as f64;
         let count = self.results.len();
@@ -176,7 +185,7 @@ impl TestResults {
         }
     }
 
-    fn std_deviation(self) -> Option<TestResult> {
+    fn std_deviation(&self) -> Option<TestResult> {
         match (self.mean(), self.results.len()) {
             (Some(results), count) if count > 0 => {
                 let tps_variance = self.results.iter().map(|tr| {
@@ -196,13 +205,13 @@ impl TestResults {
             _ => None
         }
     }
-    pub fn clear(&self) {
+    pub fn clear(&mut self) {
         self.results.clear();
     }
-    pub fn append(&self, result: TestResult) {
+    pub fn append(&mut self, result: TestResult) {
         self.results.insert(self.results.len(), result);
     }
-    pub fn verify(&self, spread: f64) -> Option<TestResult> {
+    pub fn verify(&mut self, spread: f64) -> Option<TestResult> {
             if self.results.len() < self.min {
                 return None
             }

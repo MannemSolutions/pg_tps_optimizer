@@ -1,9 +1,8 @@
-use std::collections::HashMap;
 use std::sync::{mpsc, RwLock, Arc};
 use std::thread;
 use std::thread::JoinHandle;
 use crate::threader::threads::Thread;
-use crate::threader::samples::{ParallelSample, Sample, current_timeslice, TestResult};
+use crate::threader::samples::{ParallelSamples, Sample, current_timeslice, TestResult};
 use crate::threader::workload::Workload;
 use chrono::{Utc, Duration};
 
@@ -22,34 +21,8 @@ pub struct Threader {
     rx: mpsc::Receiver<Sample>,
     thread_lock: Arc<RwLock<bool>>,
     threads: Vec<JoinHandle<()>>,
-    sliced_samples: HashMap<u32, ParallelSample>,
 }
 
-
-fn mean(data: &Vec<f64>) -> Option<f64> {
-    let sum = data.iter().sum::<f64>() as f64;
-    let count = data.len();
-
-    match count {
-        positive if positive > 0 => Some(sum / count as f64),
-        _ => None,
-    }
-}
-
-fn std_deviation(data: Vec<f64>) -> Option<f64> {
-    match (mean(&data), data.len()) {
-        (Some(data_mean), count) if count > 0 => {
-            let variance = data.iter().map(|value| {
-                let diff = data_mean - (*value as f64);
-
-                diff * diff
-            }).sum::<f64>() / count as f64;
-
-            Some(variance.sqrt())
-        },
-        _ => None
-    }
-}
 
 impl Threader {
     pub fn new(mut max_threads: u32, workload: Workload) -> Threader {
@@ -68,7 +41,6 @@ impl Threader {
             rx,
             thread_lock,
             threads,
-            sliced_samples: HashMap::new(),
         }
     }
     pub fn scaleup(&mut self, new_threads: u32)  {
@@ -104,37 +76,32 @@ impl Threader {
     }
 
     pub fn wait_stable(&mut self, spread: f64, count: usize, max_wait: Duration) -> Option<TestResult> {
-        let timeslice = current_timeslice();
-        let current_mult_sample: ParallelSample = ParallelSample::new(timeslice);
         let end_time = Utc::now()+max_wait;
-        let mut results = TestResults::new(count, count+1);
-        for _ in 1..count {
-            if Utc::now() > end_time {
+        let mut parallel_samples = ParallelSamples::new();
+        let i: usize = 0;
+        loop {
+            if i > count && Utc::now() > end_time {
                 break;
             }
-            let multisample = self.consume();
-            self.sliced_samples
-                .entry(multisample.timeslice)
-                .and_modify(|s| s.add(multisample).unwrap())
-                .or_insert(multisample);
-            let current_mult_sample = self.sliced_samples
-                .entry(timeslice)
-                .or_insert(current_mult_sample);
-            if current_mult_sample.num_samples < self.num_samples {
-                results.clear();
-                continue;
+            parallel_samples = parallel_samples.append(self.consume());
+            let test_result = parallel_samples.as_results(count, count+1);
+            match test_result.verify(spread) {
+                Some(test_result) => {
+                    return Some(test_result);
+                },
+                None => {
+                    continue;
+                }
             }
-            results.append(current_mult_sample.as_testresult());
-            return results.verify(spread);
         }
         None
     }
 
-    fn consume(&self) -> ParallelSample {
+    fn consume(&mut self) -> ParallelSamples {
         //With more threads (> 500) we have some issues, where the one main thread cannot consume messages fast enough.
         //This function can downscale from 25 messages to 1 message.
-        let mut s = ParallelSample::new(current_timeslice());
         let wait = std::time::Duration::from_millis(10);
+        let mut parallel_samples = ParallelSamples::new();
         loop {
             match self.thread_lock.read() {
                 Ok(done) => {
@@ -147,13 +114,13 @@ impl Threader {
             loop {
                 match self.rx.recv_timeout(wait) {
                     Ok(samples) => {
-                        s.add(samples.to_multi_samples());
+                        parallel_samples.add(samples.to_multi_samples());
                     },
                     Err(_err) => (),
                 };
             }
         }
-        s
+        return parallel_samples;
     }
 }
 

@@ -1,3 +1,6 @@
+use std::collections::BTreeMap;
+use std::vec::Vec;
+
 use chrono::{Duration,DateTime,Utc, TimeZone};
 
 
@@ -141,6 +144,51 @@ impl ParallelSample {
     }
 }
 
+pub struct ParallelSamples {
+    samples: BTreeMap<u32, ParallelSample>,
+}
+
+impl Iterator for ParallelSamples {
+    type Item = ParallelSample;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.samples.len() == 1 {
+            return None;
+        }
+        match self.samples.pop_first() {
+            Some((_, sample)) => Some(sample),
+            _ => None,
+        }
+    }
+}
+
+impl ParallelSamples {
+    // initialize a new without data
+    pub fn new() -> ParallelSamples {
+        ParallelSamples{
+            samples: BTreeMap::new(),
+        }
+    }
+    pub fn add(&mut self, sample: ParallelSample) {
+        self.samples
+            .entry(sample.timeslice)
+            .and_modify(|s| { s.add(sample).unwrap() })
+            .or_insert(sample);
+    }
+    pub fn append(mut self, samples: ParallelSamples) -> ParallelSamples {
+        for (_, sample) in samples.samples {
+            self.add(sample);
+        }
+        self
+    }
+    pub fn as_results(&self, min: usize, max: usize) -> TestResults {
+        let mut results = TestResults::new(min, max);
+        for (_, sample) in self.samples.clone() {
+            results.append(sample.as_testresult());
+        }
+        results
+    }
+}
+
 pub struct TestResult {
     pub tps: f64,
     pub latency: f64,
@@ -210,13 +258,13 @@ impl TestResults {
     }
     pub fn append(&mut self, result: TestResult) {
         self.results.insert(self.results.len(), result);
+        if self.results.len() > self.max {
+            self.results.remove(0);
+        }
     }
-    pub fn verify(&mut self, spread: f64) -> Option<TestResult> {
+    pub fn verify(&self, spread: f64) -> Option<TestResult> {
             if self.results.len() < self.min {
                 return None
-            }
-            if self.results.len() > self.max {
-                self.results.remove(0);
             }
             let stdev = self.std_deviation().unwrap();
             if stdev.between_spread(spread) {

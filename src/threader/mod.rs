@@ -2,11 +2,9 @@ use std::sync::{mpsc, RwLock, Arc};
 use std::thread;
 use std::thread::JoinHandle;
 use crate::threader::threads::Thread;
-use crate::threader::samples::{ParallelSamples, Sample, current_timeslice, TestResult};
+use crate::threader::samples::{ParallelSamples, Sample, TestResult};
 use crate::threader::workload::Workload;
 use chrono::{Utc, Duration};
-
-use self::samples::TestResults;
 
 mod threads;
 mod samples;

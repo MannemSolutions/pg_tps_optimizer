@@ -17,7 +17,7 @@ fn timeslice(when: DateTime<Utc>) -> u32 {
     ((when - Utc.with_ymd_and_hms(1970, 1, 1, 0, 0, 0).unwrap()).num_milliseconds()/200) as u32
 }
 
-pub fn current_timeslice() -> u32 {
+fn current_timeslice() -> u32 {
     timeslice(chrono::Utc::now())
 }
 
@@ -59,6 +59,7 @@ impl Sample {
         duration = duration / 1_000_000_000_f64;
         f64::from(self.transactions) / duration
     }
+    /*
     // how many seconds did we waited for a transaction to return
     pub fn waits(self) -> Duration {
         self.end-self.start
@@ -68,6 +69,7 @@ impl Sample {
         let num = self.transactions as i32;
         (self.end-self.start)/num
     }
+    */
     // You can materialize a Sample into A ParallelSample struct
     pub fn to_multi_samples(self) -> ParallelSample {
         ParallelSample{
@@ -101,6 +103,7 @@ impl Clone for ParallelSample {
 
 
 impl ParallelSample {
+    /*
     // initialize a new without data
     pub fn new(timeslice: u32) -> ParallelSample {
         ParallelSample{
@@ -111,6 +114,7 @@ impl ParallelSample {
             num_samples: 0,
         }
     }
+    */
     // Combine two ParallelSample (same time slice, different threads) into one
     pub fn add(&mut self, samples: ParallelSample) -> Result<(), &'static str>{
         if self.timeslice != samples.timeslice {
@@ -181,8 +185,12 @@ impl ParallelSamples {
         self
     }
     pub fn as_results(&self, min: usize, max: usize) -> TestResults {
+        let previous_timeslice = current_timeslice()-1;
         let mut results = TestResults::new(min, max);
         for (_, sample) in self.samples.clone() {
+            if sample.timeslice > previous_timeslice {
+                break;
+            }
             results.append(sample.as_testresult());
         }
         results
@@ -253,9 +261,11 @@ impl TestResults {
             _ => None
         }
     }
+    /*
     pub fn clear(&mut self) {
         self.results.clear();
     }
+    */
     pub fn append(&mut self, result: TestResult) {
         self.results.insert(self.results.len(), result);
         if self.results.len() > self.max {

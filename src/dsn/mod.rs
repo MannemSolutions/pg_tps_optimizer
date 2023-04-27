@@ -17,24 +17,18 @@ fn shell_expand(path: &str) -> String {
 }
 
 impl Dsn {
-    // fn new() -> Dsn {
-    //     Dsn{
-    //         kv: HashMap::new(),
-    //     }
-    // }
     pub fn from_string(from: &str) -> Dsn {
-        let mut kv: HashMap<String, String> = HashMap::new();
-        let mut ssl_mode = "disable".to_string();
+        let mut dsn = Dsn::new();
         let split = from.split(" ");
         for s in split {
             if let Some((k, v)) = s.split_once("=") {
-                kv.insert(k.to_string(), v.to_string());
+                dsn.kv.insert(k.to_string(), v.to_string());
                 if k.eq("sslmode") {
-                    ssl_mode = v.to_string()
+                    dsn.ssl_mode = v.to_string()
                 }
             }
         }
-        Dsn { kv, ssl_mode }
+        dsn
     }
     pub fn copy(&self) -> Dsn {
         let mut kv: HashMap<String, String> = HashMap::new();
@@ -54,7 +48,7 @@ impl Dsn {
         let ssl_mode = "disable".to_string();
         Dsn { kv, ssl_mode }
     }
-    pub fn from_defaults() -> Dsn {
+    pub fn new() -> Dsn {
         let mut kv: HashMap<String, String> = HashMap::new();
 
         let mut user = generic::get_env_str("", "PGUSER", "").to_string();

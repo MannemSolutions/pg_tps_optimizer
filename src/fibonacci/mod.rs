@@ -22,7 +22,7 @@ impl Fibonacci {
             next,
         }
     }
-    pub fn list(curr: u32, next: u32, count: usize) -> Vec<u32> {
+    pub fn as_list(curr: u32, next: u32, count: usize) -> Vec<u32> {
         Fibonacci::new(curr, next).take(count).collect()
     }
     pub fn value(curr: u32, next: u32, number: usize) -> u32 {

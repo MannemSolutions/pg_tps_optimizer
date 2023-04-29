@@ -22,10 +22,27 @@ impl Fibonacci {
             next,
         }
     }
-    pub fn as_list(curr: u32, next: u32, count: usize) -> Vec<u32> {
-        Fibonacci::new(curr, next).take(count).collect()
-    }
-    pub fn value(curr: u32, next: u32, number: usize) -> u32 {
-        Fibonacci::new(curr, next).take(number).last().unwrap()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_fibonacci() {
+        assert_eq!(Fibonacci::new(1,1)
+                   .take(5)
+                   .collect::<Vec<u32>>()
+                   .len(), 5);
+        let sum: u32 = Fibonacci::new(1,1)
+                   .take(5)
+                   .collect::<Vec<u32>>()
+                   .iter()
+                   .sum();
+        assert_eq!(sum, 19);
+        assert_eq!(Fibonacci::new(1,1)
+                   .take(5)
+                   .last()
+                   .unwrap(), 8);
     }
 }

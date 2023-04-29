@@ -21,11 +21,8 @@ impl Dsn {
         let mut dsn = Dsn::new();
         let split = from.split(" ");
         for s in split {
-            if let Some((k, v)) = s.split_once("=") {
-                dsn.kv.insert(k.to_string(), v.to_string());
-                if k.eq("sslmode") {
-                    dsn.ssl_mode = v.to_string()
-                }
+            if let Some((key, value)) = s.split_once("=") {
+                dsn.set_value(key, value)
             }
         }
         dsn
@@ -37,9 +34,9 @@ impl Dsn {
         }
         Dsn { kv, ssl_mode: self.ssl_mode.to_string() }
     }
-    pub fn cleanse(self) -> Dsn {
+    pub fn cleanse(&self) -> Dsn {
         let mut kv: HashMap<String, String> = HashMap::new();
-        kv.extend(self.kv);
+        kv.extend(self.clone().kv);
         kv.remove("sslmode");
         kv.remove("sslcert");
         kv.remove("sslkey");
@@ -90,12 +87,19 @@ impl Dsn {
         );
         Dsn { kv, ssl_mode }
     }
-    pub fn to_string(self) -> String {
+    pub fn to_string(&self) -> String {
         let mut vec = Vec::new();
-        for (k, v) in self.kv {
+        for (k, v) in self.clone().kv {
             vec.push(format!("{0}={1}", k, v))
         }
+        vec.sort();
         vec.join(" ")
+    }
+    fn set_value(&mut self, key: &str, value: &str) {
+        self.kv.insert(key.to_string(), value.to_string());
+        if key.eq("sslmode") {
+            self.ssl_mode = value.to_string()
+        }
     }
     fn get_value(&self, key: &str, default: &str) -> String {
         match self.kv.get_key_value(key) {
@@ -109,21 +113,20 @@ impl Dsn {
         }
         default.to_string()
     }
-    pub fn use_tls(self) -> bool {
-        self.ssl_mode.eq("prefer")
+    pub fn use_tls(&self) -> bool {
+        self.ssl_mode.ne("disable")
     }
     pub fn verify_hostname(&self) -> bool {
         self.ssl_mode.eq("verify-full")
     }
     pub fn client(self) -> Client {
-        let copy = self.copy().cleanse().to_string();
+        let copy = self.cleanse().to_string();
         let conn_string = copy.as_str();
         if ! self.copy().use_tls() {
             println!("not using tls");
-            let client = postgres::Client::connect(
-                conn_string, NoTls).unwrap();
-            // The source_connection object performs the actual communication with the database,
-            // so spawn it off to run on its own.
+            let client = postgres::Client::connect(conn_string, NoTls).unwrap();
+            // The source_connection object performs the actual communication
+            // with the database, so spawn it off to run on its own.
             return client
         }
         let mut builder = match SslConnector::builder(SslMethod::tls()) {
@@ -135,11 +138,16 @@ impl Dsn {
             if let Err(error) = builder.set_certificate_chain_file(cert_file) {
                 eprintln!("set_certificate_file: {}", error);
             }
-            let private_key = shell_expand(self.get_value("sslkey", "~/.postgresql/postgresql.key").as_str());
-            if let Err(error) = builder.set_private_key_file(private_key, SslFiletype::PEM) {
+            let private_key = shell_expand(
+                self.get_value("sslkey",
+                               "~/.postgresql/postgresql.key").as_str());
+            if let Err(error) = builder.set_private_key_file(
+                private_key, SslFiletype::PEM) {
                 eprintln!("set_client_key_file: {}", error);
             }
-            let root_cert = shell_expand(self.get_value("sslrootcert", "~/.postgresql/root.crt").as_str());
+            let root_cert = shell_expand(
+                self.get_value("sslrootcert",
+                               "~/.postgresql/root.crt").as_str());
             if let Err(error) = builder.set_ca_file(root_cert) {
                 eprintln!("set_ca_file: {}", error);
             }
@@ -155,3 +163,70 @@ impl Dsn {
         return client
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new() {
+        // Lets record the envvars we set
+        let mut envvars = HashMap::new();
+        envvars.insert("PGHOST", "here");
+        envvars.insert("PGDATABASE", "there");
+        envvars.insert("PGUSER", "me");
+        envvars.insert("PGSSLMODE", "disable");
+        envvars.insert("PGSSLCERT", "~/cert");
+        envvars.insert("PGSSLKEY", "~/key");
+        envvars.insert("PGSSLROOTCERT", "~/root");
+        envvars.insert("PGSSLCRL", "~/crl");
+        // and set them
+        for (key, value) in envvars.iter() {
+            std::env::set_var(key, value);
+        }
+
+        // Lets test with these set
+        let mut d = Dsn::new();
+        assert_eq!(d.use_tls(), false);
+        assert_eq!(d.verify_hostname(), false);
+        d.set_value("sslmode", "verify-full");
+        assert_eq!(d.use_tls(), true);
+        assert_eq!(d.verify_hostname(), true);
+        assert_eq!(d.to_string(),
+        concat!("dbname=there ",
+                "host=here ",
+                "sslcert=~/cert ",
+                "sslcrl=~/crl ",
+                "sslkey=~/key ",
+                "sslmode=verify-full ",
+                "sslrootcert=~/root user=me"));
+        // and unset them
+        for (key, _) in envvars.iter() {
+            std::env::remove_var(key);
+        }
+        // And test without them being set
+        d = Dsn::new();
+        assert_eq!(d.use_tls(), true);
+        assert_eq!(d.cleanse().to_string(),
+        concat!("dbname=sebman ",
+                "host=/tmp ",
+                "user=sebman"));
+        assert_eq!(d.to_string(),
+        concat!("dbname=sebman ",
+                "host=/tmp ",
+                "sslcert=~/.postgresql/postgresql.crt ",
+                "sslcrl=~/.postgresql/root.crl ",
+                "sslkey=~/.postgresql/postgresql.key ",
+                "sslmode=prefer ",
+                "sslrootcert=~/.postgresql/root.crt ",
+                "user=sebman"));
+        // And reset them to the value they had before runnignt his test
+        for (key, value) in std::env::vars() {
+            if envvars.contains_key(key.as_str()) {
+                std::env::set_var(key, value);
+            }
+        }
+    }
+
+}
+

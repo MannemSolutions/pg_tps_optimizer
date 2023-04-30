@@ -166,6 +166,7 @@ impl Dsn {
 
 #[cfg(test)]
 mod tests {
+    use postgres::Error;
     use super::*;
 
     #[test]
@@ -222,10 +223,30 @@ mod tests {
                 "user=sebman"));
         // And reset them to the value they had before runnignt his test
         for (key, value) in std::env::vars() {
+            print!("{}={}", key, value);
             if envvars.contains_key(key.as_str()) {
                 std::env::set_var(key, value);
             }
         }
+    }
+
+    #[test]
+    #[ignore]
+    fn test_dsn_client() -> Result<(), Error> {
+        let constr = generic::get_env_str("", "TEST_CONNSTR", "").to_string();
+        if constr == "" {
+            return Ok(());
+        }
+        let dsn = Dsn::from_string(constr.as_str());
+        let mut client = dsn.client();
+        let query = "select oid, datname from pg_database";
+            println!("query: {}", query);
+        for row in &client.query(query, &[])? {
+            let id: u32 = row.get(0);
+            let name: &str = row.get(1);
+            println!("oid: {}, name: {}", id, name);
+        }
+        Ok(())
     }
 
 }

@@ -45,3 +45,36 @@ fn get_bool_default(val: bool, env_key: String) -> bool {
     false
 }
 */
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_env_str() {
+        const TEST_ISSET: &str = "is set";
+        const TEST_VAR: &str = "TEST_VAR_STR";
+        const TEST_VAL: &str = "from env";
+        const TEST_DEFAULT: &str = "default";
+        env::set_var(TEST_VAR, TEST_VAL);
+        assert_eq!(get_env_str("", TEST_VAR, ""), TEST_VAL);
+        assert_eq!(get_env_str(TEST_ISSET, TEST_VAR, ""), TEST_ISSET);
+        assert_eq!(get_env_str("", TEST_VAR, TEST_DEFAULT), TEST_VAL);
+        env::remove_var(TEST_VAR);
+        assert_eq!(get_env_str("", TEST_VAR, ""), "");
+        assert_eq!(get_env_str(TEST_ISSET, TEST_VAR, ""), TEST_ISSET);
+        assert_eq!(get_env_str("", TEST_VAR, TEST_DEFAULT), TEST_DEFAULT);
+    }
+    #[test]
+    fn test_get_env_bool() {
+        const TEST_VAR: &str = "TEST_VAR_BOOL";
+        const TEST_VAL: &str = "is set";
+        env::set_var(TEST_VAR, TEST_VAL);
+        for val in [true, false] {
+            assert_eq!(get_env_bool(val, TEST_VAR), true);
+        }
+        env::remove_var(TEST_VAR);
+        for val in [true, false] {
+            assert_eq!(get_env_bool(val, TEST_VAR), val);
+        }
+    }
+}

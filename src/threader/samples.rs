@@ -1,3 +1,34 @@
+/*
+This module helps to go from one sample (one timeslice, single thread) to
+a TestResult (TPS and average latency) once 'it is stable'.
+Therefore we have multiple structures. How it works (and some definitions):
+
+* Every thread tries to run as many queries as it can in 200ms and keeps track of duration,
+  number of transactions and total waits (from run query to get results). With this:
+  * The struct where we track duration, tps and waits is called a Sample.
+  * A period of 200ms is called a timeslice. Every Sample belongs to a specific timeslice.
+* When it has finished a Sample, it is sent to the master thread with a MPSC channel.
+* The master thread collects all samples and combines them into a ParallelSample.
+  A ParallelSample is a container for all Samples of a specific timeslice combined.
+  As such a ParallelSample can be seen as the total performance on that timeslice.
+  It only holds the number of Samples, sum of transactions, sum of waits and sum of duration.
+  When the program runs 20 threads, 1000 TPS and latency of 10ms,
+  the ParallelSample would look something like
+  ParallelSample{
+    timeslice: 8414426000, # This is the first timeslice of April 30th, 2023 at 22:06:39
+    total_transactions: 200, # 1000TS is 200 transactions in 200ms
+    total_waits: 2000ms, # For 200 transactions with latency 10ms, we expect total of 2000ms
+    total_duration: 4000ms, # We expect 200ms has elapsed for 20 threads, so total of 4000ms
+    num_samples: 20, # For 20 threads we expect 20 samples
+    }
+* ParallelSamples can collect data (Samples can be added until we have all of them).
+  Once we expect we have all of them, we freeze the info into a TestResult.
+  A TestResult still holds a combination of all samples for a TimeSlice, but
+  the link to the exact timeslice is left out. We keep multiple TestResults together
+  and calculate standard deviation. Once we have enough samples, and stddev is
+  within parameters, we return a summary (mean TPS and mean latency) as a final TestResult.
+*/
+
 use std::collections::BTreeMap;
 use std::vec::Vec;
 

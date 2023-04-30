@@ -1,3 +1,8 @@
+/*
+Pg_sampler can be used to periodically get statistics information from PostgreSQL,
+The main idea is to get the number of transactions and de amount of WAL.
+We also capture the duration between 2 samples, and as such also know TPS and WAL per sec.
+*/
 use postgres::{Client, Statement, Error};
 use crate::dsn::Dsn;
 use chrono::Utc;

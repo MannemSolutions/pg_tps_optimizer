@@ -112,7 +112,7 @@ impl Threader {
             loop {
                 match self.rx.recv_timeout(wait) {
                     Ok(samples) => {
-                        parallel_samples.add(samples.to_multi_samples());
+                        parallel_samples.add(samples.to_parallel_samples());
                     },
                     Err(_err) => (),
                 };

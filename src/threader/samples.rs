@@ -70,11 +70,6 @@ impl Sample {
             end: chrono::Utc::now(),
         }
     }
-    // timeslices are defined as 'pockets of 200 miliseconds'.
-    // this function returns the numer of pockets since EPOCH
-    pub fn timeslice(&self) -> u32 {
-        timeslice(self.start)
-        }
     // add a transaction (with the duration of it)
     pub fn increment(&mut self, wait: Duration) {
         self.transactions += 1;
@@ -102,9 +97,9 @@ impl Sample {
     }
     */
     // You can materialize a Sample into A ParallelSample struct
-    pub fn to_multi_samples(self) -> ParallelSample {
+    pub fn to_parallel_samples(self) -> ParallelSample {
         ParallelSample{
-            timeslice: self.timeslice(),
+            timeslice: timeslice(self.start),
             total_transactions: self.transactions,
             total_waits: self.wait,
             total_duration: self.end - self.start,
@@ -134,6 +129,10 @@ impl Clone for ParallelSample {
 
 
 impl ParallelSample {
+    // avg latency is the average amount of waits over all samples contained
+    pub fn avg_latency(&self) -> Duration {
+        self.total_waits / (self.total_transactions as i32)
+    }
     /*
     // initialize a new without data
     pub fn new(timeslice: u32) -> ParallelSample {
@@ -166,10 +165,6 @@ impl ParallelSample {
             .num_nanoseconds().unwrap() as f64;
         duration = duration / 1_000_000_000_f64;
         f64::from(self.total_transactions) / duration
-    }
-    // avg latency is the average amount of waits over all samples contained
-    pub fn avg_latency(&self) -> f64 {
-        (self.total_waits.num_microseconds().unwrap() as f64)/(self.total_transactions as f64)
     }
     pub fn as_testresult(&self) -> TestResult {
         TestResult{
@@ -230,12 +225,19 @@ impl ParallelSamples {
 
 pub struct TestResult {
     pub tps: f64,
-    pub latency: f64,
+    pub latency: Duration,
 }
 
+impl Copy for TestResult { }
+
+impl Clone for TestResult {
+    fn clone(&self) -> TestResult {
+        *self
+    }
+}
 impl TestResult {
     fn between_spread(&self, spread: f64) -> bool {
-        if self.tps > spread || self.latency > spread {
+        if (self.tps > spread) || (self.latency.num_milliseconds() as f64 > spread) {
             return false;
         }
         true
@@ -256,16 +258,29 @@ impl TestResults {
             results: Vec::new(),
         }
     }
+    fn tot_tps(&self) -> f64 {
+        self.results.iter().map(|tr| tr.tps).sum::<f64>()
+    }
+    fn tot_latency(&self) -> Duration {
+        // I wished I could do somthing like this instead:
+        // self.results.iter().map(|tr| tr.latency).sum::<Duration>();
+        // But I get `the trait bound `chrono::Duration: Sum` is not satisfied`
+        let mut tot_lat = Duration::zero();
+        for tr in self.results.clone() {
+            tot_lat = tot_lat + tr.latency;
+        }
+        tot_lat
+    }
     fn mean(&self) -> Option<TestResult> {
-        let sum_tps = self.results.iter().map(|tr| tr.tps).sum::<f64>() as f64;
-        let sum_latency = self.results.iter().map(|tr| tr.latency).sum::<f64>() as f64;
+        let sum_tps = self.tot_tps();
+        let sum_latency = self.tot_latency();
         let count = self.results.len();
 
         match count {
             positive if positive > 0 => Some(
                 TestResult {
                     tps: sum_tps/(count as f64),
-                    latency: sum_latency/(count as f64)
+                    latency: sum_latency/(count as i32),
                 }
                 ),
             _ => None,
@@ -280,13 +295,13 @@ impl TestResults {
                     tps_diff * tps_diff
                 }).sum::<f64>() / count as f64;
                 let lat_variance = self.results.iter().map(|tr| {
-                    let lat_diff = results.latency -tr.latency;
+                    let lat_diff = (results.latency -tr.latency).num_milliseconds() as f64;
                     lat_diff * lat_diff
                 }).sum::<f64>() / count as f64;
 
                 Some(TestResult{
                     tps: tps_variance.sqrt(),
-                    latency: lat_variance.sqrt(),
+                    latency: Duration::milliseconds(lat_variance.sqrt() as i64),
                 })
             },
             _ => None
@@ -312,5 +327,47 @@ impl TestResults {
                 return Some(stdev);
             }
             None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{thread,time};
+    use super::*;
+
+    fn create_test_sample() -> Sample {
+        let mut sample = Sample::new();
+        let fivems = Duration::milliseconds(5);
+        for _ in 1..36 {
+            sample.increment(fivems);
+        }
+        thread::sleep(time::Duration::from_millis(200));
+        sample.end();
+        sample
+    }
+    fn create_test_parasample() -> ParallelSample {
+        let sample = create_test_sample();
+        let mut ps = sample.to_parallel_samples();
+        for _ in 1..88 {
+            _ = ps.add(sample.to_parallel_samples());
+        }
+        ps
+    }
+    #[test]
+    fn test_sample() {
+        let sample = create_test_sample();
+        let s_tps = sample.tps();
+        assert!(s_tps < 180_f64);
+
+        let ms = sample.to_parallel_samples();
+        assert_eq!(s_tps, ms.tot_tps());
+        assert_eq!(ms.avg_latency().num_microseconds().unwrap(), 5000);
+    }
+    #[test]
+    fn test_parallel_sample() {
+        let ps = create_test_parasample();
+        assert!(ps.tot_tps() < 15840_f64 && ps.tot_tps() > 14000_f64);
+        let avg_latency = ps.avg_latency().num_microseconds().unwrap();
+        assert!(avg_latency <= 5010 && avg_latency > 4990);
     }
 }

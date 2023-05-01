@@ -97,4 +97,3 @@ fn sample(client: &mut Client, w_type: WorkloadType, mut num_queries: f64, threa
 
     Ok(s)
 }
-

@@ -5,6 +5,7 @@ postgres/certs
 target
 *.profraw
 *.profdata
+coverage.out
 
 
 config/tls

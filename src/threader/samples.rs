@@ -408,6 +408,9 @@ mod tests {
     fn test_parallel_sample() {
         let sample = create_test_sample(NUM_TRANSACTIONS, Duration::milliseconds(WAIT_MS));
         let ps = create_test_parasample(sample, NUM_THREADS);
+        let mut other = ps.clone();
+        other.timeslice += 1;
+        assert_eq!(other.add(ps).unwrap_err(), "trying to combine samples of different timeslices");
         let percent = percent_of(ps.tot_tps(),
                                 (NUM_TRANSACTIONS * NUM_THREADS *
                                  TIMESLICES_PER_SECOND) as f64);
@@ -429,7 +432,7 @@ mod tests {
         assert_eq!(results.avg_tps(), 0_f64);
         assert_eq!(results.tot_latency().num_microseconds().unwrap(), 0);
 
-        pps = create_test_parasamples(sample, current_timeslice()-20, NUM_TIMESLICES, 0);
+        pps = create_test_parasamples(sample, current_timeslice()-20, NUM_TIMESLICES+1, 1);
         let results = pps.as_results(1, NUM_TIMESLICES);
         assert_eq!(results.len(), NUM_TIMESLICES);
         let mut percent = percent_of(results.avg_tps(), expected_tps);

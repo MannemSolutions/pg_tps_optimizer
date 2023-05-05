@@ -539,6 +539,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "more-asserts"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1fafa6961cabd9c63bcd77a45d7e3b7f3b552b70417831fb0f56db717e72407e"
+
+[[package]]
 name = "num"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -695,11 +701,13 @@ dependencies = [
  "chrono",
  "duration-string",
  "getopts",
+ "more-asserts",
  "num",
  "num-traits",
  "openssl",
  "postgres",
  "postgres-openssl",
+ "range_check",
  "regex",
  "shellexpand",
  "structopt",
@@ -876,6 +884,12 @@ checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 dependencies = [
  "getrandom",
 ]
+
+[[package]]
+name = "range_check"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d69b9d3e775b8f88eb220da1a4d8baae200d3ec499b8ef14b881362a5f8ad883"
 
 [[package]]
 name = "redox_syscall"

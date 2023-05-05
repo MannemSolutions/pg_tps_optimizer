@@ -127,7 +127,6 @@ impl Clone for ParallelSample {
     }
 }
 
-
 impl ParallelSample {
     // avg latency is the average amount of waits over all samples contained
     pub fn avg_latency(&self) -> Duration {
@@ -175,16 +174,16 @@ impl ParallelSample {
 }
 
 pub struct ParallelSamples {
-    samples: BTreeMap<u32, ParallelSample>,
+    parallel_samples: BTreeMap<u32, ParallelSample>,
 }
 
 impl Iterator for ParallelSamples {
     type Item = ParallelSample;
     fn next(&mut self) -> Option<Self::Item> {
-        if self.samples.len() == 1 {
+        if self.parallel_samples.len() == 1 {
             return None;
         }
-        match self.samples.pop_first() {
+        match self.parallel_samples.pop_first() {
             Some((_, sample)) => Some(sample),
             _ => None,
         }
@@ -195,17 +194,17 @@ impl ParallelSamples {
     // initialize a new without data
     pub fn new() -> ParallelSamples {
         ParallelSamples{
-            samples: BTreeMap::new(),
+            parallel_samples: BTreeMap::new(),
         }
     }
     pub fn add(&mut self, sample: ParallelSample) {
-        self.samples
+        self.parallel_samples
             .entry(sample.timeslice)
             .and_modify(|s| { s.add(sample).unwrap() })
             .or_insert(sample);
     }
     pub fn append(mut self, samples: ParallelSamples) -> ParallelSamples {
-        for (_, sample) in samples.samples {
+        for (_, sample) in samples.parallel_samples {
             self.add(sample);
         }
         self
@@ -213,11 +212,11 @@ impl ParallelSamples {
     pub fn as_results(&self, min: usize, max: usize) -> TestResults {
         let previous_timeslice = current_timeslice()-1;
         let mut results = TestResults::new(min, max);
-        for (_, sample) in self.samples.clone() {
-            if sample.timeslice > previous_timeslice {
+        for (_, parallel_sample) in self.parallel_samples.clone() {
+            if parallel_sample.timeslice >= previous_timeslice {
                 break;
             }
-            results.append(sample.as_testresult());
+            results.append(parallel_sample.as_testresult());
         }
         results
     }
@@ -271,10 +270,13 @@ impl TestResults {
         }
         tot_lat
     }
+    fn len(&self) -> usize {
+        self.results.len()
+    }
     fn mean(&self) -> Option<TestResult> {
         let sum_tps = self.tot_tps();
         let sum_latency = self.tot_latency();
-        let count = self.results.len();
+        let count = self.len();
 
         match count {
             positive if positive > 0 => Some(
@@ -333,30 +335,69 @@ impl TestResults {
 #[cfg(test)]
 mod tests {
     use std::{thread,time};
+    use range_check::Check;
     use super::*;
+    const NUM_TRANSACTIONS: usize = 36;
+    const NUM_THREADS: usize = 88;
+    const TIMESLICES_PER_SECOND: usize = 5;
+    const NUM_TIMESLICES: usize = 10;
+    const WAIT_MS: i64 = 5;
 
-    fn create_test_sample() -> Sample {
+    impl TestResults {
+        fn avg_tps(&self) -> f64 {
+            if self.len() == 0 {
+                return 0.0
+            }
+            self.tot_tps() / (self.len() as f64)
+        }
+    }
+
+    fn create_test_sample(num_transaction: usize, wait: Duration) -> Sample {
         let mut sample = Sample::new();
-        let fivems = Duration::milliseconds(5);
-        for _ in 1..36 {
-            sample.increment(fivems);
+        for _ in 1..num_transaction {
+            sample.increment(wait);
         }
         thread::sleep(time::Duration::from_millis(200));
         sample.end();
         sample
     }
-    fn create_test_parasample() -> ParallelSample {
-        let sample = create_test_sample();
+    fn create_test_parasample(sample: Sample, num_threads: usize) -> ParallelSample {
         let mut ps = sample.to_parallel_samples();
-        for _ in 1..88 {
+        for _ in 1..num_threads {
             _ = ps.add(sample.to_parallel_samples());
         }
         ps
     }
+    fn create_test_parasamples(mut ps: ParallelSample, from_ts: u32,
+                               num_ts: usize, increase: u32) -> ParallelSamples {
+        let mut pps = ParallelSamples::new();
+        for slice in from_ts..(from_ts+num_ts as u32) {
+            ps.timeslice = slice;
+            ps.num_samples += increase;
+            pps.add(ps.clone());
+        }
+        pps
+    }
+    fn percent_of (first: f64, second: f64) -> f64 {
+        if first == 0.0 {
+            return 0.0
+        }
+        return 100.0 * second / first
+
+    }
+    #[test]
+    fn test_percent_of() {
+        assert_eq!(percent_of(0.0, 50.0), 0.0);
+        assert_eq!(percent_of(50.0, 50.0), 100.0);
+        assert_eq!(percent_of(100.0, 50.0), 50.0);
+        assert_eq!(percent_of(-100.0, 50.0), -50.0);
+        assert_eq!(percent_of(-100.0, -50.0), 50.0);
+        assert_eq!(percent_of(-10.0, -50.0), 500.0);
+    }
     #[test]
     fn test_sample() {
-        let sample = create_test_sample();
-        let s_tps = sample.tps();
+        let sample = create_test_sample(NUM_TRANSACTIONS, Duration::milliseconds(WAIT_MS));
+        let s_tps = sample.clone().tps();
         assert!(s_tps < 180_f64);
 
         let ms = sample.to_parallel_samples();
@@ -365,9 +406,40 @@ mod tests {
     }
     #[test]
     fn test_parallel_sample() {
-        let ps = create_test_parasample();
-        assert!(ps.tot_tps() < 15840_f64 && ps.tot_tps() > 14000_f64);
+        let sample = create_test_sample(NUM_TRANSACTIONS, Duration::milliseconds(WAIT_MS));
+        let ps = create_test_parasample(sample, NUM_THREADS);
+        let percent = percent_of(ps.tot_tps(),
+                                (NUM_TRANSACTIONS * NUM_THREADS *
+                                 TIMESLICES_PER_SECOND) as f64);
+        assert_eq!(percent.check_range(90.0..110.0), Ok(percent));
         let avg_latency = ps.avg_latency().num_microseconds().unwrap();
         assert!(avg_latency <= 5010 && avg_latency > 4990);
     }
+    #[test]
+    fn test_results() {
+        let expected_tps = (NUM_TRANSACTIONS * NUM_THREADS * TIMESLICES_PER_SECOND) as f64;
+        let expected_latency = Duration::milliseconds(WAIT_MS);
+        let sample = create_test_parasample(
+            create_test_sample(NUM_TRANSACTIONS, expected_latency), NUM_THREADS);
+        let mut pps = create_test_parasamples(sample, current_timeslice(), NUM_TIMESLICES, 10);
+        let results = pps.as_results(1, NUM_TIMESLICES);
+        // Since we start at current timeslice, we expect we get no results
+        assert_eq!(results.len(), 0);
+        assert_eq!(results.tot_tps(), 0_f64);
+        assert_eq!(results.avg_tps(), 0_f64);
+        assert_eq!(results.tot_latency().num_microseconds().unwrap(), 0);
+
+        pps = create_test_parasamples(sample, current_timeslice()-20, NUM_TIMESLICES, 0);
+        let results = pps.as_results(1, NUM_TIMESLICES);
+        assert_eq!(results.len(), NUM_TIMESLICES);
+        let mut percent = percent_of(results.avg_tps(), expected_tps);
+        assert_eq!(percent.check_range(90.0..110.0), Ok(percent));
+        let mean = results.mean().unwrap().clone();
+        percent = percent_of(mean.tps, expected_tps);
+        assert_eq!(percent.check_range(90.0..110.0), Ok(percent));
+        percent = percent_of(mean.latency.num_microseconds().unwrap() as f64,
+                             expected_latency.num_microseconds().unwrap() as f64);
+        assert_eq!(percent.check_range(90.0..110.0), Ok(percent));
+    }
+
 }

@@ -121,5 +121,3 @@ impl Threader {
         return parallel_samples;
     }
 }
-
-

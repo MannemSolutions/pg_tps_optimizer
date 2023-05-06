@@ -29,7 +29,7 @@ Therefore we have multiple structures. How it works (and some definitions):
   within parameters, we return a summary (mean TPS and mean latency) as a final TestResult.
 */
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, iter::FromIterator};
 use std::vec::Vec;
 
 use chrono::{Duration,DateTime,Utc, TimeZone};
@@ -50,6 +50,14 @@ fn timeslice(when: DateTime<Utc>) -> u32 {
 
 fn current_timeslice() -> u32 {
     timeslice(chrono::Utc::now())
+}
+
+fn percent_of (first: f64, second: f64) -> f64 {
+    if first == 0.0 {
+        return 0.0
+    }
+    return 100.0 * second / first
+
 }
 
 impl Copy for Sample { }
@@ -175,17 +183,43 @@ impl ParallelSample {
 
 pub struct ParallelSamples {
     parallel_samples: BTreeMap<u32, ParallelSample>,
+    iterator_keys: Vec<u32>,
+    current: usize,
+}
+
+impl Clone for ParallelSamples {
+    fn clone(&self) -> ParallelSamples {
+        let mut pss = ParallelSamples::new();
+        for (i, ps) in &self.parallel_samples {
+            pss.parallel_samples.insert(*i, ps.clone());
+        }
+        pss
+    }
 }
 
 impl Iterator for ParallelSamples {
     type Item = ParallelSample;
     fn next(&mut self) -> Option<Self::Item> {
-        if self.parallel_samples.len() == 1 {
+        if self.parallel_samples.len() != self.iterator_keys.len() {
+            self.iterator_keys = Vec::from_iter(self.parallel_samples
+                                                .iter()
+                                                .map(|(key, _)| *key));
+            self.iterator_keys.sort();
+            self.current = 0
+        }
+        if self.current >= self.parallel_samples.len() {
             return None;
         }
-        match self.parallel_samples.pop_first() {
-            Some((_, sample)) => Some(sample),
-            _ => None,
+        match self.iterator_keys.get(self.current) {
+            Some(current_key) =>
+                match self.parallel_samples.get(current_key) {
+                    Some(parallel_sample)=> {
+                        self.current += 1;
+                        Some(*parallel_sample)
+                    },
+                    None => None,
+                },
+            None => None,
         }
     }
 }
@@ -195,9 +229,12 @@ impl ParallelSamples {
     pub fn new() -> ParallelSamples {
         ParallelSamples{
             parallel_samples: BTreeMap::new(),
+            iterator_keys: Vec::new(),
+            current: 0,
         }
     }
     pub fn add(&mut self, sample: ParallelSample) {
+        println!("adding timeslice {}", sample.timeslice);
         self.parallel_samples
             .entry(sample.timeslice)
             .and_modify(|s| { s.add(sample).unwrap() })
@@ -205,6 +242,7 @@ impl ParallelSamples {
     }
     pub fn append(mut self, samples: ParallelSamples) -> ParallelSamples {
         for (_, sample) in samples.parallel_samples {
+            println!("adding");
             self.add(sample);
         }
         self
@@ -234,17 +272,8 @@ impl Clone for TestResult {
         *self
     }
 }
-impl TestResult {
-    fn between_spread(&self, spread: f64) -> bool {
-        if (self.tps > spread) || (self.latency.num_milliseconds() as f64 > spread) {
-            return false;
-        }
-        true
-    }
-}
-
 pub struct TestResults {
-    min: usize,
+    pub min: usize,
     max: usize,
     results: Vec<TestResult>,
 }
@@ -289,11 +318,11 @@ impl TestResults {
         }
     }
 
-    fn std_deviation(&self) -> Option<TestResult> {
+    pub fn std_deviation_absolute(&self) -> Option<TestResult> {
         match (self.mean(), self.results.len()) {
             (Some(results), count) if count > 0 => {
                 let tps_variance = self.results.iter().map(|tr| {
-                    let tps_diff = results.tps -tr.tps;
+                    let tps_diff = results.tps - tr.tps;
                     tps_diff * tps_diff
                 }).sum::<f64>() / count as f64;
                 let lat_variance = self.results.iter().map(|tr| {
@@ -321,14 +350,28 @@ impl TestResults {
         }
     }
     pub fn verify(&self, spread: f64) -> Option<TestResult> {
-            if self.results.len() < self.min {
-                return None
+        if self.results.len() < self.min {
+            return None
+        }
+        match (self.std_deviation_absolute(), self.mean()) {
+            (Some(stdev), Some(mean)) => {
+                if ! ((0.0..spread).contains(&percent_of(mean.tps, stdev.tps)) &&
+                    (0.0..spread).contains(
+                        &percent_of(mean
+                                    .latency
+                                    .num_microseconds()
+                                    .unwrap_or(0) as f64,
+                                    stdev
+                                    .latency
+                                    .num_microseconds()
+                                    .unwrap_or(0) as f64))) {
+                        return None
+                } else {
+                    return Some(stdev)
+                }
             }
-            let stdev = self.std_deviation().unwrap();
-            if stdev.between_spread(spread) {
-                return Some(stdev);
-            }
-            None
+            _ => return None
+        }
     }
 }
 
@@ -419,6 +462,20 @@ mod tests {
         assert!(avg_latency <= 5010 && avg_latency > 4990);
     }
     #[test]
+    fn test_parallel_samples() {
+        let sample = create_test_sample(NUM_TRANSACTIONS, Duration::milliseconds(WAIT_MS));
+        let ps = create_test_parasample(sample, NUM_THREADS);
+        let mut other = ps.clone();
+        other.timeslice += 1;
+        let mut pss = ParallelSamples::new();
+        pss.add(ps);
+        let mut other_pss = ParallelSamples::new();
+        other_pss.add(other);
+        pss = pss.clone().append(other_pss);
+        assert_eq!(pss.count(), 2);
+
+    }
+    #[test]
     fn test_results() {
         let expected_tps = (NUM_TRANSACTIONS * NUM_THREADS * TIMESLICES_PER_SECOND) as f64;
         let expected_latency = Duration::milliseconds(WAIT_MS);
@@ -433,10 +490,15 @@ mod tests {
         assert_eq!(results.tot_latency().num_microseconds().unwrap(), 0);
 
         pps = create_test_parasamples(sample, current_timeslice()-20, NUM_TIMESLICES+1, 1);
-        let results = pps.as_results(1, NUM_TIMESLICES);
+        let mut results = pps.as_results(100, NUM_TIMESLICES);
         assert_eq!(results.len(), NUM_TIMESLICES);
         let mut percent = percent_of(results.avg_tps(), expected_tps);
         assert_eq!(percent.check_range(90.0..110.0), Ok(percent));
+        assert!(results.verify(5.0).is_none());
+        results.min = 1;
+        let stdev = results.std_deviation_absolute().unwrap();
+        println!("{} {}", stdev.tps, stdev.latency.num_milliseconds());
+        assert!(results.verify(5.0).is_some());
         let mean = results.mean().unwrap().clone();
         percent = percent_of(mean.tps, expected_tps);
         assert_eq!(percent.check_range(90.0..110.0), Ok(percent));

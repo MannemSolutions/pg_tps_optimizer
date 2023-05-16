@@ -1,9 +1,9 @@
-use duration_string::DurationString;
-use crate::generic;
 use crate::dsn::Dsn;
+use crate::generic;
 use crate::threader::workload::Workload;
-use structopt::StructOpt;
+use duration_string::DurationString;
 use regex;
+use structopt::StructOpt;
 
 /// Search for a pattern in a file and display the lines that contain it.
 
@@ -11,7 +11,12 @@ use regex;
 #[structopt(about = "I detect maximum TPS with minimal latency. Pass `-h` for more info.")]
 pub struct Params {
     /// Connection string
-    #[structopt(default_value, short, long, help = "the DSN to connect to (or use env vars PG...)")]
+    #[structopt(
+        default_value,
+        short,
+        long,
+        help = "the DSN to connect to (or use env vars PG...)"
+    )]
     pub dsn: String,
 
     /// Query
@@ -19,7 +24,11 @@ pub struct Params {
     pub query: String,
 
     /// Prepared queries
-    #[structopt(short, long, help = "you can run prepared statements, or run direct statements")]
+    #[structopt(
+        short,
+        long,
+        help = "you can run prepared statements, or run direct statements"
+    )]
     #[structopt(long)]
     pub prepared: bool,
 
@@ -28,11 +37,19 @@ pub struct Params {
     pub transactional: bool,
 
     /// Testrange
-    #[structopt(short, long, help = "you can set min and max of numclients if you know (default 1:1000)")]
+    #[structopt(
+        short,
+        long,
+        help = "you can set min and max of numclients if you know (default 1:1000)"
+    )]
     pub range: String,
 
     /// spread
-    #[structopt(short, long, help = "you can set the spread that defines if the clients run stable.")]
+    #[structopt(
+        short,
+        long,
+        help = "you can set the spread that defines if the clients run stable."
+    )]
     pub spread: f64,
 
     /// min_
@@ -40,7 +57,11 @@ pub struct Params {
     pub min_samples: u32,
 
     /// max_wait
-    #[structopt(short, long, help = "Give it this ammount of seconds before we decide it wil never stabilize.")]
+    #[structopt(
+        short,
+        long,
+        help = "Give it this ammount of seconds before we decide it wil never stabilize."
+    )]
     pub max_wait: DurationString,
 }
 
@@ -50,24 +71,15 @@ impl Params {
     }
     pub fn get_args() -> Params {
         let mut args = Params::from_args();
-        args.dsn = generic::get_env_str(
-            &args.dsn,
-            &String::from("PGTPSSOURCE"),
-            &String::from(""),
-        );
+        args.dsn = generic::get_env_str(&args.dsn, &String::from("PGTPSSOURCE"), &String::from(""));
         args.query = generic::get_env_str(
             &args.query,
             &String::from("PGTPSQUERY"),
             &String::from("select * from pg_tables"),
         );
-        args.prepared = generic::get_env_bool(
-            args.prepared,
-            &String::from("PGTPSPREPARED"),
-        );
-        args.transactional = generic::get_env_bool(
-            args.transactional,
-            &String::from("PGTPSTRANSACTIONAL"),
-        );
+        args.prepared = generic::get_env_bool(args.prepared, &String::from("PGTPSPREPARED"));
+        args.transactional =
+            generic::get_env_bool(args.transactional, &String::from("PGTPSTRANSACTIONAL"));
         args.range = generic::get_env_str(
             &args.range,
             &String::from("PGTPSRANGE"),
@@ -79,17 +91,23 @@ impl Params {
         Dsn::from_string(self.dsn.as_str())
     }
     pub fn as_workload(&self) -> Workload {
-        Workload::new(self.as_dsn(), self.query.to_string(), self.transactional, self.prepared)
+        Workload::new(
+            self.as_dsn(),
+            self.query.to_string(),
+            self.transactional,
+            self.prepared,
+        )
     }
     pub fn range_min_max(&self) -> (u32, u32) {
-        let re = regex::Regex::new(r"\d+)").unwrap();
-        let values: Vec<_> = re.find_iter(self.range.as_str())
-            .filter_map(|digits| ( digits.as_str().parse().ok()))
+        let re = regex::Regex::new(r"\d+").unwrap();
+        let values: Vec<_> = re
+            .find_iter(self.range.as_str())
+            .filter_map(|digits| (digits.as_str().parse().ok()))
             .collect();
-        match values.len(){
-            0=>(1,1000),
-            1=>(1,values[0]),
-            _=>(values[0], values[values.len()-1])
+        match values.len() {
+            0 => (1, 1000),
+            1 => (1, values[0]),
+            _ => (values[0], values[values.len() - 1]),
         }
     }
 }

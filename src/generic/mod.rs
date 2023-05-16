@@ -10,6 +10,30 @@ pub fn get_env_str(val: &str, env_key: &str, default: &str) -> String {
     }
 }
 
+fn shell_expand(path: &str) -> String {
+    shellexpand::tilde(path).to_string()
+}
+
+pub fn shell_exists(path: &str) -> String {
+    let path = shellexpand::tilde(path).to_string();
+    if std::path::Path::new(path.as_str()).exists() {
+        return path;
+    }
+    "".to_string()
+}
+
+pub fn get_env_path(val: &str, env_key: &str, default: &str) -> String {
+    if !val.is_empty() {
+        return format!("{}", shell_expand(val));
+    }
+    match env::var(env_key) {
+        Ok(env_val) => shell_expand(env_val.as_str()),
+        Err(_e) => {
+            format!("{}", shell_exists(default))
+        }
+    }
+}
+
 pub fn get_env_bool(val: bool, env_key: &str) -> bool {
     if val {
         return val;

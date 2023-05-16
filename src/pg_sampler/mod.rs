@@ -3,9 +3,9 @@ Pg_sampler can be used to periodically get statistics information from PostgreSQ
 The main idea is to get the number of transactions and de amount of WAL.
 We also capture the duration between 2 samples, and as such also know TPS and WAL per sec.
 */
-use postgres::{Client, Statement, Error};
 use crate::dsn::Dsn;
 use chrono::Utc;
+use postgres::{Client, Error, Statement};
 
 const SAMPLE_QUERY: &str = "
 SELECT now()::timestamp as samplemmoment,
@@ -13,7 +13,6 @@ pg_current_wal_lsn()::varchar as lsn,
 (pg_current_wal_lsn() - $1::varchar::pg_lsn)::real as walbytes,
 (select sum(xact_commit+xact_rollback)::real
  FROM pg_stat_database) as transacts";
-
 
 // This struct can run a query against postgres and see
 pub struct PgSampler {
@@ -23,7 +22,6 @@ pub struct PgSampler {
     latest: TransactDataSample,
 }
 
-
 impl PgSampler {
     pub fn new(dsn: Dsn) -> Result<PgSampler, Error> {
         let mut client: Client = dsn.client();
@@ -31,8 +29,8 @@ impl PgSampler {
         Ok(PgSampler {
             client,
             statement,
-            previous: TransactDataSample::new() ,
-            latest: TransactDataSample::new() ,
+            previous: TransactDataSample::new(),
+            latest: TransactDataSample::new(),
         })
     }
     pub fn next(&mut self) -> Result<(), Error> {
@@ -49,7 +47,10 @@ impl PgSampler {
         Ok(())
     }
     pub fn duration(&self) -> f32 {
-        (self.latest.samplemoment - self.previous.samplemoment).num_nanoseconds().unwrap() as f32 / 10.0_f32.powi(9)
+        (self.latest.samplemoment - self.previous.samplemoment)
+            .num_nanoseconds()
+            .unwrap() as f32
+            / 10.0_f32.powi(9)
     }
     pub fn wal_per_sec(&self) -> f32 {
         (self.latest.wal_bytes - self.previous.wal_bytes) / self.duration()

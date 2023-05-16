@@ -1,10 +1,10 @@
-use std::borrow::Borrow;
 use crate::generic;
+use openssl::ssl::{SslConnector, SslFiletype, SslMethod};
+use postgres::{Client, NoTls};
+use postgres_openssl::MakeTlsConnector;
+use std::borrow::Borrow;
 use std::collections::HashMap;
 use users::{get_current_uid, get_user_by_uid};
-use openssl::ssl::{SslConnector, SslFiletype, SslMethod};
-use postgres_openssl::MakeTlsConnector;
-use postgres::{Client, NoTls};
 
 #[derive(Debug, Clone)]
 pub struct Dsn {
@@ -12,9 +12,17 @@ pub struct Dsn {
     ssl_mode: String,
 }
 
-fn shell_expand(path: &str) -> String {
-    shellexpand::tilde(path).to_string()
+fn os_user_name() -> String {
+        let mut user = generic::get_env_str("", "PGUSER", "").to_string();
+        if user.is_empty() {
+            user = match get_user_by_uid(get_current_uid()).unwrap().name().to_str() {
+                Some(osuser) => osuser.to_string(),
+                None => "".to_string(),
+            };
+        }
+        user.to_string()
 }
+
 
 impl Dsn {
     pub fn from_string(from: &str) -> Dsn {
@@ -32,7 +40,10 @@ impl Dsn {
         for (k, v) in self.kv.borrow() {
             kv.insert(k.to_string(), v.to_string());
         }
-        Dsn { kv, ssl_mode: self.ssl_mode.to_string() }
+        Dsn {
+            kv,
+            ssl_mode: self.ssl_mode.to_string(),
+        }
     }
     pub fn cleanse(&self) -> Dsn {
         let mut kv: HashMap<String, String> = HashMap::new();
@@ -48,42 +59,32 @@ impl Dsn {
     pub fn new() -> Dsn {
         let mut kv: HashMap<String, String> = HashMap::new();
 
-        let mut user = generic::get_env_str("", "PGUSER", "").to_string();
-        if user.is_empty() {
-            user = match get_user_by_uid(get_current_uid()).unwrap().name().to_str() {
-                Some(osuser) => osuser.to_string(),
-                None => "".to_string(),
-            };
-        }
-        kv.insert("user".to_string(), user.to_string());
+        kv.insert("user".to_string(), os_user_name());
         kv.insert(
             "dbname".to_string(),
-            generic::get_env_str("", "PGDATABASE", user.as_str()),
+            generic::get_env_str("", "PGDATABASE", os_user_name().as_str()),
         );
         kv.insert(
             "host".to_string(),
             generic::get_env_str("", "PGHOST", "/tmp"),
         );
         let ssl_mode = generic::get_env_str("", "PGSSLMODE", "prefer");
-        kv.insert(
-            "sslmode".to_string(),
-            ssl_mode.to_string(),
-        );
+        kv.insert("sslmode".to_string(), ssl_mode.to_string());
         kv.insert(
             "sslcert".to_string(),
-            generic::get_env_str("", "PGSSLCERT", "~/.postgresql/postgresql.crt"),
+            generic::get_env_path("", "PGSSLCERT", "~/.postgresql/postgresql.crt"),
         );
         kv.insert(
             "sslkey".to_string(),
-            generic::get_env_str("", "PGSSLKEY", "~/.postgresql/postgresql.key"),
+            generic::get_env_path("", "PGSSLKEY", "~/.postgresql/postgresql.key"),
         );
         kv.insert(
             "sslrootcert".to_string(),
-            generic::get_env_str("", "PGSSLROOTCERT", "~/.postgresql/root.crt"),
+            generic::get_env_path("", "PGSSLROOTCERT", "~/.postgresql/root.crt"),
         );
         kv.insert(
             "sslcrl".to_string(),
-            generic::get_env_str("", "PGSSLCRL", "~/.postgresql/root.crl"),
+            generic::get_env_path("", "PGSSLCRL", "~/.postgresql/root.crl"),
         );
         Dsn { kv, ssl_mode }
     }
@@ -109,7 +110,7 @@ impl Dsn {
                     return v.to_string();
                 }
             }
-            None => return default.to_string()
+            None => return default.to_string(),
         }
         default.to_string()
     }
@@ -122,35 +123,27 @@ impl Dsn {
     pub fn client(self) -> Client {
         let copy = self.cleanse().to_string();
         let conn_string = copy.as_str();
-        if ! self.copy().use_tls() {
+        let cert_file = self.get_value("sslcert", "");
+        if !self.copy().use_tls() || cert_file.is_empty() {
             println!("not using tls");
-            let client = postgres::Client::connect(conn_string, NoTls).unwrap();
+            return postgres::Client::connect(conn_string, NoTls).unwrap();
             // The source_connection object performs the actual communication
             // with the database, so spawn it off to run on its own.
-            return client
         }
         let mut builder = match SslConnector::builder(SslMethod::tls()) {
             Ok(value) => value,
             Err(error) => panic!("connector error: {}", error),
         };
-        let cert_file = shell_expand(self.get_value("sslcert", "").as_str());
-        if !cert_file.is_empty() {
-            if let Err(error) = builder.set_certificate_chain_file(cert_file) {
-                eprintln!("set_certificate_file: {}", error);
-            }
-            let private_key = shell_expand(
-                self.get_value("sslkey",
-                               "~/.postgresql/postgresql.key").as_str());
-            if let Err(error) = builder.set_private_key_file(
-                private_key, SslFiletype::PEM) {
-                eprintln!("set_client_key_file: {}", error);
-            }
-            let root_cert = shell_expand(
-                self.get_value("sslrootcert",
-                               "~/.postgresql/root.crt").as_str());
-            if let Err(error) = builder.set_ca_file(root_cert) {
-                eprintln!("set_ca_file: {}", error);
-            }
+        if let Err(error) = builder.set_certificate_chain_file(cert_file) {
+            eprintln!("set_certificate_file: {}", error);
+        }
+        let private_key = self.get_value("sslkey", "~/.postgresql/postgresql.key");
+        if let Err(error) = builder.set_private_key_file(private_key, SslFiletype::PEM) {
+            eprintln!("set_client_key_file: {}", error);
+        }
+        let root_cert = self.get_value("sslrootcert", "~/.postgresql/root.crt");
+        if let Err(error) = builder.set_ca_file(root_cert) {
+            eprintln!("set_ca_file: {}", error);
         }
 
         let mut connector = MakeTlsConnector::new(builder.build());
@@ -158,16 +151,14 @@ impl Dsn {
             config.set_verify_hostname(self.verify_hostname());
             Ok(())
         });
-        let client = postgres::Client::connect(
-            conn_string, connector).unwrap();
-        return client
+        return postgres::Client::connect(conn_string, connector).unwrap();
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use postgres::Error;
     use super::*;
+    use postgres::Error;
 
     #[test]
     fn test_new() {
@@ -178,9 +169,9 @@ mod tests {
         envvars.insert("PGUSER", "me");
         envvars.insert("PGSSLMODE", "disable");
         envvars.insert("PGSSLCERT", "~/cert");
-        envvars.insert("PGSSLKEY", "~/key");
-        envvars.insert("PGSSLROOTCERT", "~/root");
-        envvars.insert("PGSSLCRL", "~/crl");
+        envvars.insert("PGSSLKEY", "key");
+        envvars.insert("PGSSLROOTCERT", "root");
+        envvars.insert("PGSSLCRL", "crl");
         // and set them
         for (key, value) in envvars.iter() {
             std::env::set_var(key, value);
@@ -193,14 +184,21 @@ mod tests {
         d.set_value("sslmode", "verify-full");
         assert_eq!(d.use_tls(), true);
         assert_eq!(d.verify_hostname(), true);
-        assert_eq!(d.to_string(),
-        concat!("dbname=there ",
+        let home_dir = home::home_dir().unwrap().display().to_string();
+        let expected = format!(concat!(
+                "dbname=there ",
                 "host=here ",
-                "sslcert=~/cert ",
-                "sslcrl=~/crl ",
-                "sslkey=~/key ",
+                "sslcert={0}/cert ",
+                "sslcrl=crl ",
+                "sslkey=key ",
                 "sslmode=verify-full ",
-                "sslrootcert=~/root user=me"));
+                "sslrootcert=root ",
+                "user=me",
+            ), home_dir.as_str());
+        assert_eq!(
+            d.to_string(),
+            expected,
+        );
         // and unset them
         for (key, _) in envvars.iter() {
             std::env::remove_var(key);
@@ -208,19 +206,28 @@ mod tests {
         // And test without them being set
         d = Dsn::new();
         assert_eq!(d.use_tls(), true);
-        assert_eq!(d.cleanse().to_string(),
-        concat!("dbname=sebman ",
+        assert_eq!(
+            d.cleanse().to_string(),
+            format!(concat!("dbname={0} host=/tmp user={0}"), os_user_name())
+        );
+        let sslcert = generic::shell_exists("~/.postgresql/postgresql.crt");
+        let sslcrl = generic::shell_exists("~/.postgresql/root.crl");
+        let sslkey = generic::shell_exists("~/.postgresql/postgresql.key");
+        let sslrootcert = generic::shell_exists("~/.postgresql/root.crt");
+        assert_eq!(
+            d.to_string(),
+            format!(
+            concat!(
+                "dbname={0} ",
                 "host=/tmp ",
-                "user=sebman"));
-        assert_eq!(d.to_string(),
-        concat!("dbname=sebman ",
-                "host=/tmp ",
-                "sslcert=~/.postgresql/postgresql.crt ",
-                "sslcrl=~/.postgresql/root.crl ",
-                "sslkey=~/.postgresql/postgresql.key ",
+                "sslcert={1} ",
+                "sslcrl={2} ",
+                "sslkey={3} ",
                 "sslmode=prefer ",
-                "sslrootcert=~/.postgresql/root.crt ",
-                "user=sebman"));
+                "sslrootcert={4} ",
+                "user={0}"
+            ), os_user_name(), sslcert, sslcrl, sslkey, sslrootcert)
+        );
         // And reset them to the value they had before runnignt his test
         for (key, value) in std::env::vars() {
             print!("{}={}", key, value);
@@ -240,7 +247,7 @@ mod tests {
         let dsn = Dsn::from_string(constr.as_str());
         let mut client = dsn.client();
         let query = "select oid, datname from pg_database";
-            println!("query: {}", query);
+        println!("query: {}", query);
         for row in &client.query(query, &[])? {
             let id: u32 = row.get(0);
             let name: &str = row.get(1);
@@ -248,6 +255,4 @@ mod tests {
         }
         Ok(())
     }
-
 }
-

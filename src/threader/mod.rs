@@ -4,7 +4,6 @@ use crate::threader::workload::Workload;
 use chrono::{Duration, Utc};
 use std::sync::{mpsc, Arc, RwLock};
 use std::thread;
-use std::thread::JoinHandle;
 
 mod samples;
 mod threads;
@@ -18,7 +17,7 @@ pub struct Threader {
     tx: mpsc::Sender<Sample>,
     rx: mpsc::Receiver<Sample>,
     thread_lock: Arc<RwLock<bool>>,
-    threads: Vec<JoinHandle<()>>,
+    threads: Vec<thread::JoinHandle<()>>,
 }
 
 impl Threader {
@@ -42,7 +41,7 @@ impl Threader {
     }
     pub fn scaleup(&mut self, new_threads: u32) {
         let mut thread_lock: Arc<RwLock<bool>>;
-        let mut thread_handle: JoinHandle<()>;
+        let mut thread_handle: thread::JoinHandle<()>;
         for thread_id in self.num_threads..new_threads {
             let thread_tx = self.tx.clone();
             thread_lock = self.thread_lock.clone();
@@ -56,6 +55,7 @@ impl Threader {
                 })
                 .unwrap();
             self.threads.push(thread_handle);
+            thread::sleep(std::time::Duration::from_millis(10));
         }
         self.num_threads = new_threads;
         self.num_samples = self.num_threads / 10;
@@ -86,8 +86,8 @@ impl Threader {
             }
             parallel_samples = parallel_samples.append(self.consume());
             let test_result = parallel_samples.as_results(count, count + 1);
-//            let stddev = test_result.std_deviation_absolute().unwrap();
-//            println!("tps: {}, latency: {}", stddev.tps, stddev.latency);
+            //            let stddev = test_result.std_deviation_absolute().unwrap();
+            //            println!("tps: {}, latency: {}", stddev.tps, stddev.latency);
             match test_result.verify(spread) {
                 Some(test_result) => {
                     return Some(test_result);
@@ -104,12 +104,12 @@ impl Threader {
         //With more threads (> 500) we have some issues, where the one main thread cannot consume messages fast enough.
         //This function can downscale from 25 messages to 1 message.
         let wait = std::time::Duration::from_millis(10);
-        let timeout = std::time::SystemTime::now()+std::time::Duration::from_millis(200);
+        let timeout = std::time::SystemTime::now() + std::time::Duration::from_millis(200);
         let mut parallel_samples = ParallelSamples::new();
-            match self.thread_lock.read() {
-                Ok(_done) => (),
-                Err(_err) => (),
-            };
+        match self.thread_lock.read() {
+            Ok(_done) => (),
+            Err(_err) => (),
+        };
             loop {
                 match self.rx.recv_timeout(wait) {
                     Ok(samples) => {
@@ -120,9 +120,6 @@ impl Threader {
                             break;
                     },
                 };
-                if true == false {
-                    break;
-                }
             }
         return parallel_samples;
     }

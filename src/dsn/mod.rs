@@ -169,9 +169,9 @@ mod tests {
         envvars.insert("PGUSER", "me");
         envvars.insert("PGSSLMODE", "disable");
         envvars.insert("PGSSLCERT", "~/cert");
-        envvars.insert("PGSSLKEY", "key");
-        envvars.insert("PGSSLROOTCERT", "root");
-        envvars.insert("PGSSLCRL", "crl");
+        envvars.insert("PGSSLKEY", "~/key");
+        envvars.insert("PGSSLROOTCERT", "~/root");
+        envvars.insert("PGSSLCRL", "~/crl");
         // and set them
         for (key, value) in envvars.iter() {
             std::env::set_var(key, value);
@@ -185,19 +185,19 @@ mod tests {
         assert_eq!(d.use_tls(), true);
         assert_eq!(d.verify_hostname(), true);
         let home_dir = home::home_dir().unwrap().display().to_string();
-        let expected = format!(concat!(
+        let expected = concat!(
                 "dbname=there ",
                 "host=here ",
-                "sslcert={0}/cert ",
-                "sslcrl=crl ",
-                "sslkey=key ",
+                "sslcert=~/cert ",
+                "sslcrl=~/crl ",
+                "sslkey=~/key ",
                 "sslmode=verify-full ",
-                "sslrootcert=root ",
+                "sslrootcert=~/root ",
                 "user=me",
-            ), home_dir.as_str());
+            );
         assert_eq!(
             d.to_string(),
-            expected,
+            expected.replace("~", home_dir.as_str()),
         );
         // and unset them
         for (key, _) in envvars.iter() {

@@ -284,7 +284,7 @@ impl TestResults {
         self.results.iter().map(|tr| tr.tps).sum::<f64>()
     }
     fn tot_latency(&self) -> Duration {
-        // I wished I could do somthing like this instead:
+        // I wished I could do something like this instead:
         // self.results.iter().map(|tr| tr.latency).sum::<Duration>();
         // But I get `the trait bound `chrono::Duration: Sum` is not satisfied`
         let mut tot_lat = Duration::zero();
@@ -488,7 +488,7 @@ mod tests {
             NUM_THREADS,
         );
         let mut pps = create_test_parasamples(sample, current_timeslice(), NUM_TIMESLICES, 10);
-        let results = pps.as_results(1, NUM_TIMESLICES);
+        let mut results = pps.as_results(1, NUM_TIMESLICES);
         // Since we start at current timeslice, we expect we get no results
         assert_eq!(results.len(), 0);
         assert_eq!(results.tot_tps(), 0_f64);
@@ -496,10 +496,14 @@ mod tests {
         assert_eq!(results.tot_latency().num_microseconds().unwrap(), 0);
 
         pps = create_test_parasamples(sample, current_timeslice() - 20, NUM_TIMESLICES + 1, 1);
-        let mut results = pps.as_results(100, NUM_TIMESLICES);
+        results = pps.as_results(100, NUM_TIMESLICES);
         assert_eq!(results.len(), NUM_TIMESLICES);
         let mut percent = percent_of(results.avg_tps(), expected_tps);
         assert_eq!(percent.check_range(90.0..110.0), Ok(percent));
+        assert_eq!(
+            results.tot_latency().num_microseconds().unwrap(),
+            expected_latency.num_microseconds().unwrap()
+        );
         assert!(results.verify(5.0).is_none());
         results.min = 1;
         let stdev = results.std_deviation_absolute().unwrap();

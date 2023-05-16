@@ -31,16 +31,18 @@ impl Thread {
     }
     pub fn initialize(&self) -> Result<Client, Box<dyn std::error::Error>> {
         let mut client = self.workload.client();
-        client.query(format!("create table if not exists {} (id oid)",
-        TABLE_NAME).as_str(), &[])?;
-        client.query(format!("insert into {} values($1)", TABLE_NAME).as_str(), &[&self.id])?;
+        client.query(
+            format!("create table if not exists {} (id oid)", TABLE_NAME).as_str(),
+            &[],
+        )?;
+        client.query(
+            format!("insert into {} values($1)", TABLE_NAME).as_str(),
+            &[&self.id],
+        )?;
 
         Ok(client)
     }
     pub fn procedure(self) -> Result<(), Box<dyn std::error::Error>> {
-        if self.id == 0 {
-            println!("{0}", self.workload.as_string());
-        }
         let mut tps: f64 = 1000_f64;
 
         //Sleep 100 milliseconds

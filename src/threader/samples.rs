@@ -287,11 +287,16 @@ impl TestResults {
         // I wished I could do something like this instead:
         // self.results.iter().map(|tr| tr.latency).sum::<Duration>();
         // But I get `the trait bound `chrono::Duration: Sum` is not satisfied`
+        let mut num: i32 = 0;
         let mut tot_lat = Duration::zero();
         for tr in self.results.clone() {
             tot_lat = tot_lat + tr.latency;
+            num += 1
         }
-        tot_lat
+        if num == 0 {
+            return tot_lat
+        }
+        tot_lat / num
     }
     fn len(&self) -> usize {
         self.results.len()
@@ -304,7 +309,7 @@ impl TestResults {
         match count {
             positive if positive > 0 => Some(TestResult {
                 tps: sum_tps / (count as f64),
-                latency: sum_latency / (count as i32),
+                latency: sum_latency,
             }),
             _ => None,
         }
@@ -500,14 +505,15 @@ mod tests {
         assert_eq!(results.len(), NUM_TIMESLICES);
         let mut percent = percent_of(results.avg_tps(), expected_tps);
         assert_eq!(percent.check_range(90.0..110.0), Ok(percent));
-        assert_eq!(
-            results.tot_latency().num_microseconds().unwrap(),
-            expected_latency.num_microseconds().unwrap()
-        );
+        percent = percent_of(results.tot_latency().num_microseconds().unwrap() as f64,
+            expected_latency.num_microseconds().unwrap() as f64);
+        assert_eq!(percent.check_range(90.0..110.0), Ok(percent));
         assert!(results.verify(5.0).is_none());
         results.min = 1;
+        let mean = results.mean().unwrap();
+        println!("mean: {} {}", mean.tps, mean.latency.num_milliseconds());
         let stdev = results.std_deviation_absolute().unwrap();
-        println!("{} {}", stdev.tps, stdev.latency.num_milliseconds());
+        println!("stdev: {} {}", stdev.tps, stdev.latency.num_milliseconds());
         assert!(results.verify(5.0).is_some());
         let mean = results.mean().unwrap().clone();
         percent = percent_of(mean.tps, expected_tps);

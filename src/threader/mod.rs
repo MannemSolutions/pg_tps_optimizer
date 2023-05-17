@@ -84,7 +84,8 @@ impl Threader {
             if i > count && Utc::now() > end_time {
                 break;
             }
-            parallel_samples = parallel_samples.append(self.consume());
+            let s = self.consume();
+            parallel_samples = parallel_samples.append(s);
             let test_result = parallel_samples.as_results(count, count + 1);
             //            let stddev = test_result.std_deviation_absolute().unwrap();
             //            println!("tps: {}, latency: {}", stddev.tps, stddev.latency);
@@ -106,21 +107,29 @@ impl Threader {
         let wait = std::time::Duration::from_millis(10);
         let timeout = std::time::SystemTime::now() + std::time::Duration::from_millis(200);
         let mut parallel_samples = ParallelSamples::new();
+
         match self.thread_lock.read() {
             Ok(_done) => (),
             Err(_err) => (),
         };
             loop {
+ //               println!("looping");
                 match self.rx.recv_timeout(wait) {
                     Ok(samples) => {
-                        parallel_samples.add(samples.to_parallel_samples());
+//        println!("adding");
+                        parallel_samples.add(samples.to_parallel_sample());
                     }
-                    Err(_err) =>
+                    Err(_err) => (),
+                };
                         if std::time::SystemTime::now() > timeout {
                             break;
-                    },
-                };
+                }
             }
+            //println!("{}", parallel_samples
+            //         .clone()
+            //         .into_iter()
+            //         .map(|s| s.avg_latency().num_milliseconds() as f64)
+            //         .sum::<f64>());
         return parallel_samples;
     }
 }

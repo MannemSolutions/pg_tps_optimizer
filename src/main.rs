@@ -30,7 +30,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Date       time     | Clients |       Performance   |       Postgres        |");
     println!("--------------------|---------|-----------|---------|-----------|-----------|");
     println!("                    |         |   TPS     | Latency |   TPS     |    wal    |");
-    println!("                    |         |           | (msec)  |           |    kB/s   |");
+    println!("                    |         |           | (usec)  |           |    kB/s   |");
     println!("--------------------|---------|-----------|---------|-----------|-----------|");
     //        2019-06-24 11:33:23 |       1 | 2.105.090 |  10.121 | 2.168.312 | 1.105.131 |
 
@@ -44,18 +44,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Some(result) => {
                 sampler.next()?;
                 println!(
-                    "{0} | {1:7.5} | {2:>9.3} | {3:>7.3} | {4:>9.3} | {5:>9.3} |",
+                    "{0} | {1:7.5} | {2:>9.3} | {3:>7.1} | {4:>9.3} | {5:>9.3} |",
                     chrono::offset::Local::now().format("%Y-%m-%d %H:%M:%S"),
-                    //2023-05-16 19:12:22
                     num_threads,
                     result.tps,
-                    (result.latency.num_microseconds().unwrap() as f32 / 1000.0),
+                    (result.latency.num_microseconds().unwrap() as f32),
                     sampler.tps(),
                     sampler.wal_per_sec() as i32,
                 )
             }
             None => println!(
-                "{0} | {1:7.5} | {2:>9.3} | {3:>7.3} | {4:>9.3} | {5:>9.3} |",
+                "{0} | {1:7.5} | {2:>9.3} | {3:>7.1} | {4:>9.3} | {5:>9.3} |",
                 chrono::offset::Local::now().format("%Y-%m-%d %H:%M:%S"),
                 num_threads,
                 "?",

@@ -50,7 +50,7 @@ impl PgSampler {
         (self.latest.samplemoment - self.previous.samplemoment)
             .num_nanoseconds()
             .unwrap() as f32
-            / 10.0_f32.powi(9)
+            / 1.0e+9_f32
     }
     pub fn wal_per_sec(&self) -> f32 {
         (self.latest.wal_bytes - self.previous.wal_bytes) / self.duration()

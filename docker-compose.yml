@@ -21,3 +21,13 @@ services:
     - ./:/host
     environment:
       CHAINSMITH_CONFIG: /host/config/chainsmith.yml
+  pg_tps_optimizer:
+    build: .
+    volumes:
+    - ./:/host
+    environment:
+      PGUSER: postgres
+      PGHOST: postgres
+      PGSSLCERT: /host/config/tls/int_client/certs/postgres.pem
+      PGSSLKEY: /host/config/tls/int_client/private/postgres.key.pem
+      PGSSLROOTCERT: /host/config/tls/int_server/certs/ca-chain-bundle.cert.pem

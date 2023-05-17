@@ -8,8 +8,4 @@ if [ ! -e config/tls/int_server/certs/localhost.pem ]; then
 fi
 docker-compose up -d postgres
 sleep 5
-export PGUSER=postgres
-export PGSSLCERT=config/tls/int_client/certs/postgres.pem
-export PGSSLKEY=config/tls/int_client/private/postgres.key.pem
-export PGSSLROOTCERT=config/tls/int_server/certs/ca-chain-bundle.cert.pem
-cargo run
+docker-compose up pg_tps_optimizer

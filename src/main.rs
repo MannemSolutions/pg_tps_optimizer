@@ -67,7 +67,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ),
         }
     }
-    println!("|---------------------|---------|-------------|---------|-----------|-----------|");
+    println!("|---------------------|---------|-------------|---------|-------------|-----------|-----------|");
 
     println!("Stopping, but lets give the threads some time to stop");
     threader.finish();

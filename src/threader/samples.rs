@@ -177,7 +177,7 @@ impl ParallelSample {
             .num_nanoseconds()
             .unwrap() as f64;
         match duration == 0.0 {
-            true => self.total_transactions as f64,
+            true => 0.0,
             false => 1e9_f64 * (self.total_transactions as f64) / duration,
         }
     }
@@ -381,7 +381,7 @@ impl TestResults {
                 {
                     return None;
                 } else {
-                    return Some(stdev);
+                    return Some(mean);
                 }
             }
             _ => return None,

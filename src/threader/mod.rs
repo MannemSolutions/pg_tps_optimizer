@@ -121,8 +121,8 @@ impl Threader {
                     }
                     Err(_err) => (),
                 };
-                        if std::time::SystemTime::now() > timeout {
-                            break;
+                if std::time::SystemTime::now() > timeout {
+                    break;
                 }
             }
             //println!("{}", parallel_samples

@@ -88,9 +88,8 @@ impl Sample {
     }
     // how many transactions did we process per second
     pub fn tps(self) -> f64 {
-        let mut duration: f64 = (self.end - self.start).num_nanoseconds().unwrap() as f64;
-        duration = duration / 1_000_000_000_f64;
-        f64::from(self.transactions) / duration
+        let duration: f64 = (self.end - self.start).num_nanoseconds().unwrap() as f64;
+        1e9_f64 * (self.transactions as f64) / duration
     }
     /*
     // how many seconds did we waited for a transaction to return
@@ -138,9 +137,10 @@ impl Clone for ParallelSample {
 impl ParallelSample {
     // avg latency is the average amount of waits over all samples contained
     pub fn avg_latency(&self) -> Duration {
-        //println!("{} {}", self.total_waits.num_milliseconds(), self.total_transactions);
-        //println!("{}", (self.total_waits / (self.total_transactions as i32)).num_microseconds().unwrap());
-        self.total_waits / (self.total_transactions as i32)
+        match self.total_transactions {
+            0 => Duration::zero(),
+            _ => self.total_waits / (self.total_transactions as i32)
+        }
     }
     /*
     // initialize a new without data
@@ -169,12 +169,17 @@ impl ParallelSample {
     // tot_tps is a sum of all tps's from all samples expecting they where
     // running simultaneously on seperate threads
     pub fn tot_tps(&self) -> f64 {
+        if self.num_samples < 1 {
+            return 0.0;
+        }
         let num_samples = self.num_samples as i32;
-        let mut duration: f64 = (self.total_duration / num_samples)
+        let duration: f64 = (self.total_duration / num_samples)
             .num_nanoseconds()
             .unwrap() as f64;
-        duration = duration / 1_000_000_000_f64;
-        f64::from(self.total_transactions) / duration
+        match duration == 0.0 {
+            true => self.total_transactions as f64,
+            false => 1e9_f64 * (self.total_transactions as f64) / duration,
+        }
     }
     pub fn as_testresult(&self) -> TestResult {
         TestResult {

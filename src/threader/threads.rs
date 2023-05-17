@@ -35,6 +35,12 @@ impl Thread {
             format!("create table if not exists {} (id oid)", TABLE_NAME).as_str(),
             &[],
         )?;
+        if self.id == 0 {
+            client.query(
+                format!("truncate table {}", TABLE_NAME).as_str(),
+                &[],
+                )?;
+        }
         client.query(
             format!("insert into {} values($1)", TABLE_NAME).as_str(),
             &[&self.id],

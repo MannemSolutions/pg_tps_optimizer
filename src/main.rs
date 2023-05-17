@@ -26,12 +26,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("min threads: {} max threads: {}", min_threads, max_threads);
 
-    println!("|---------------------|---------|-------------|---------|-----------|-----------|");
-    println!("| Date       time     | Clients |       Performance     |       Postgres        |");
-    println!("|                     |         |-------------|---------|-----------|-----------|");
-    println!("|                     |         |    TPS      | Latency |   TPS     |    wal    |");
-    println!("|                     |         |             | (usec)  |           |    kB/s   |");
-    println!("|---------------------|---------|-------------|---------|-----------|-----------|");
+    println!("|---------------------|---------|-------------------------------------|-----------------------|");
+    println!("| Date       time     | Clients |              Performance            |       Postgres        |");
+    println!("|                     |         |-------------|---------|-------------|-----------|-----------|");
+    println!("|                     |         |    TPS      | Latency | TPS/Latency |   TPS     |    wal    |");
+    println!("|                     |         |             | (usec)  |             |           |    kB/s   |");
+    println!("|---------------------|---------|-------------|---------|-------------|-----------|-----------|");
     //        2019-06-24 11:33:23 |       1 | 2.105.090 |  10.121 | 2.168.312 | 1.105.131 |
 
     for num_threads in Fibonacci::new(1_u32, 1_u32).take_while(|v| *v < max_threads) {
@@ -43,20 +43,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         match threader.wait_stable(args.spread, args.min_samples as usize, d) {
             Some(result) => {
                 sampler.next()?;
+                let latency = result.latency.num_microseconds().unwrap() as f64;
                 println!(
-                    "| {0} | {1:7.5} | {2:>11.3} | {3:>7.1} | {4:>9.3} | {5:>9.3} |",
+                    "| {0} | {1:7.5} | {2:>11.3} | {3:>7.1} | {4:>11.3} | {5:>9.3} | {6:>9.3} |",
                     chrono::offset::Local::now().format("%Y-%m-%d %H:%M:%S"),
                     num_threads,
                     result.tps,
-                    (result.latency.num_microseconds().unwrap() as f32),
+                    latency,
+                    result.tps/latency,
                     sampler.tps(),
                     sampler.wal_per_sec() as i32,
                 )
             }
             None => println!(
-                "| {0} | {1:7.5} | {2:>11.3} | {3:>7.1} | {4:>9.3} | {5:>9.3} |",
+                "| {0} | {1:7.5} | {2:>11.3} | {3:>7.1} | {4:>11.3} | {5:>9.3} | {6:>9.3} |",
                 chrono::offset::Local::now().format("%Y-%m-%d %H:%M:%S"),
                 num_threads,
+                "?",
                 "?",
                 "?",
                 "?",

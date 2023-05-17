@@ -53,7 +53,11 @@ impl PgSampler {
             / 1.0e+9_f32
     }
     pub fn wal_per_sec(&self) -> f32 {
-        (self.latest.wal_bytes - self.previous.wal_bytes) / self.duration()
+        let wps = (self.latest.wal_bytes - self.previous.wal_bytes) / self.duration();
+        if wps < 0.0 {
+            return -1.0
+        }
+        wps
     }
     pub fn tps(&self) -> f32 {
         (self.latest.num_transactions - self.previous.num_transactions) / self.duration()

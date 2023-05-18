@@ -6,8 +6,8 @@
 
 If you want to download the binary and run the tool directly:
 ```
-curl -L https://github.com/MannemSolutions/pg_tps_optimizer/releases/download/v0.1.0/pg_tps_optimizer_v0.1.0_x86_64-unknown-linux-musl.zip > pg_tps_optimizer.zip
-unzip pg_tps_optimizer.zip
+curl -OL https://github.com/MannemSolutions/pg_tps_optimizer/releases/download/v0.1.3/pg_tps_optimizer_v0.1.3_x86_64-unknown-linux-musl.zip
+unzip pg_tps_optimizer*.zip
 ./pg_tps_optimizer --dsn 'host=server1,user=postgres,dbname=postgres,password=password123' --max-wait 10s --min-samples 10 --range 200 --spread 10
 ```
 **Note** that with the binary you need to set all the arguments as shown in the above example...

@@ -1,0 +1,13 @@
+/oracle_rdbms/Disk1/
+postgres/certs
+/postgres_builder/postgres.git
+/pg_cpu_load_tester/logs*
+target
+*.profraw
+*.profdata
+coverage.out
+
+
+config/tls
+config/stderr.log
+config/stdout.log

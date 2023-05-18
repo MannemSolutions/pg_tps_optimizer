@@ -1,0 +1,23 @@
+[package]
+name = "pg_tps_optimizer"
+version = "0.2.0"
+authors = ["Sebastiaan Mannem <sebastiaan.mannem@enterprisedb.com>"]
+edition = "2018"
+
+[dependencies]
+postgres = { version = "0.19.5", features = ["with-chrono-0_4"] }
+args = "2.2.0"
+getopts = "0.2.21"
+chrono = "0.4.24"
+structopt = "0.3.26"
+users = "0.11.0"
+openssl = "0.10.38"
+postgres-openssl = "0.5.0"
+shellexpand = "1.0.0"
+regex = "1"
+num = "0.4.0"
+num-traits = "0.2.15"
+duration-string = "0.3.0"
+more-asserts = "0.3.1"
+range_check = "0.2.0"
+home = "0.5.5"

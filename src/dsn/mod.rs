@@ -13,16 +13,15 @@ pub struct Dsn {
 }
 
 fn os_user_name() -> String {
-        let mut user = generic::get_env_str("", "PGUSER", "").to_string();
-        if user.is_empty() {
-            user = match get_user_by_uid(get_current_uid()).unwrap().name().to_str() {
-                Some(osuser) => osuser.to_string(),
-                None => "".to_string(),
-            };
-        }
-        user.to_string()
+    let mut user = generic::get_env_str("", "PGUSER", "").to_string();
+    if user.is_empty() {
+        user = match get_user_by_uid(get_current_uid()).unwrap().name().to_str() {
+            Some(osuser) => osuser.to_string(),
+            None => "".to_string(),
+        };
+    }
+    user.to_string()
 }
-
 
 impl Dsn {
     pub fn from_string(from: &str) -> Dsn {
@@ -186,19 +185,16 @@ mod tests {
         assert_eq!(d.verify_hostname(), true);
         let home_dir = home::home_dir().unwrap().display().to_string();
         let expected = concat!(
-                "dbname=there ",
-                "host=here ",
-                "sslcert=~/cert ",
-                "sslcrl=~/crl ",
-                "sslkey=~/key ",
-                "sslmode=verify-full ",
-                "sslrootcert=~/root ",
-                "user=me",
-            );
-        assert_eq!(
-            d.to_string(),
-            expected.replace("~", home_dir.as_str()),
+            "dbname=there ",
+            "host=here ",
+            "sslcert=~/cert ",
+            "sslcrl=~/crl ",
+            "sslkey=~/key ",
+            "sslmode=verify-full ",
+            "sslrootcert=~/root ",
+            "user=me",
         );
+        assert_eq!(d.to_string(), expected.replace("~", home_dir.as_str()),);
         // and unset them
         for (key, _) in envvars.iter() {
             std::env::remove_var(key);
@@ -217,16 +213,22 @@ mod tests {
         assert_eq!(
             d.to_string(),
             format!(
-            concat!(
-                "dbname={0} ",
-                "host=/tmp ",
-                "sslcert={1} ",
-                "sslcrl={2} ",
-                "sslkey={3} ",
-                "sslmode=prefer ",
-                "sslrootcert={4} ",
-                "user={0}"
-            ), os_user_name(), sslcert, sslcrl, sslkey, sslrootcert)
+                concat!(
+                    "dbname={0} ",
+                    "host=/tmp ",
+                    "sslcert={1} ",
+                    "sslcrl={2} ",
+                    "sslkey={3} ",
+                    "sslmode=prefer ",
+                    "sslrootcert={4} ",
+                    "user={0}"
+                ),
+                os_user_name(),
+                sslcert,
+                sslcrl,
+                sslkey,
+                sslrootcert
+            )
         );
         // And reset them to the value they had before runnignt his test
         for (key, value) in std::env::vars() {

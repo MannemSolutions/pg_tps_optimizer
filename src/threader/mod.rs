@@ -112,24 +112,24 @@ impl Threader {
             Ok(_done) => (),
             Err(_err) => (),
         };
-            loop {
- //               println!("looping");
-                match self.rx.recv_timeout(wait) {
-                    Ok(samples) => {
-//        println!("adding");
-                        parallel_samples.add(samples.to_parallel_sample());
-                    }
-                    Err(_err) => (),
-                };
-                if std::time::SystemTime::now() > timeout {
-                    break;
+        loop {
+            //               println!("looping");
+            match self.rx.recv_timeout(wait) {
+                Ok(samples) => {
+                    //        println!("adding");
+                    parallel_samples.add(samples.to_parallel_sample());
                 }
+                Err(_err) => (),
+            };
+            if std::time::SystemTime::now() > timeout {
+                break;
             }
-            //println!("{}", parallel_samples
-            //         .clone()
-            //         .into_iter()
-            //         .map(|s| s.avg_latency().num_milliseconds() as f64)
-            //         .sum::<f64>());
+        }
+        //println!("{}", parallel_samples
+        //         .clone()
+        //         .into_iter()
+        //         .map(|s| s.avg_latency().num_milliseconds() as f64)
+        //         .sum::<f64>());
         return parallel_samples;
     }
 }

@@ -139,7 +139,7 @@ impl ParallelSample {
     pub fn avg_latency(&self) -> Duration {
         match self.total_transactions {
             0 => Duration::zero(),
-            _ => self.total_waits / (self.total_transactions as i32)
+            _ => self.total_waits / (self.total_transactions as i32),
         }
     }
     /*
@@ -303,7 +303,7 @@ impl TestResults {
             num += 1
         }
         if num == 0 {
-            return tot_lat
+            return tot_lat;
         }
         tot_lat / num
     }
@@ -516,8 +516,10 @@ mod tests {
         assert_eq!(results.len(), NUM_TIMESLICES);
         let mut percent = percent_of(results.avg_tps(), expected_tps);
         assert_eq!(percent.check_range(90.0..110.0), Ok(percent));
-        percent = percent_of(results.avg_latency().num_microseconds().unwrap() as f64,
-            expected_latency.num_microseconds().unwrap() as f64);
+        percent = percent_of(
+            results.avg_latency().num_microseconds().unwrap() as f64,
+            expected_latency.num_microseconds().unwrap() as f64,
+        );
         assert_eq!(percent.check_range(90.0..110.0), Ok(percent));
         assert!(results.verify(5.0).is_none());
         results.min = 1;

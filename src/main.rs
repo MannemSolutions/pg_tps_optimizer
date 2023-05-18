@@ -50,7 +50,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     num_threads,
                     result.tps,
                     latency,
-                    result.tps/latency,
+                    result.tps / latency,
                     sampler.tps(),
                     sampler.wal_per_sec() as i32,
                 )

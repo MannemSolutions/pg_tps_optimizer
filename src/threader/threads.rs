@@ -36,10 +36,7 @@ impl Thread {
             &[],
         )?;
         if self.id == 0 {
-            client.query(
-                format!("truncate table {}", TABLE_NAME).as_str(),
-                &[],
-                )?;
+            client.query(format!("truncate table {}", TABLE_NAME).as_str(), &[])?;
         }
         client.query(
             format!("insert into {} values($1)", TABLE_NAME).as_str(),

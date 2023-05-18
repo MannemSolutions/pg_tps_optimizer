@@ -4,7 +4,7 @@ WORKDIR /usr/src/app
 COPY . .
 RUN cargo install --path .
 
-FROM debian:latest
+FROM gcr.io/distroless/cc
 
 COPY --from=builder /usr/local/cargo/bin/pg_tps_optimizer /usr/local/bin/pg_tps_optimizer
 

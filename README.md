@@ -43,6 +43,35 @@ This will do the following:
 - not stop at 89, but at 144 clients (next step is 233, which is beyond 200)
 - take TPS and latency for stable if they have a standard deviation of 5% max
 
+### Example output
+This could be the output of running the tool:
+```
+Initializing
+dsn:dbname=postgres host=postgres sslcert=/host/config/tls/int_client/certs/postgres.pem sslcrl= sslkey=/host/config/tls/int_client/private/postgres.key.pem sslmode=prefer sslrootcert=/host/config/tls/int_server/certs/ca-chain-bundle.cert.pem user=postgres
+transactional: false
+prepared: false
+min threads: 1 max threads: 100
+|---------------------|---------|-------------------------------------|-----------------------|
+| Date       time     | Clients |              Performance            |       Postgres        |
+|                     |         |-------------|---------|-------------|-----------|-----------|
+|                     |         |    TPS      | Latency | TPS/Latency |   TPS     |    wal    |
+|                     |         |             | (usec)  |             |           |    kB/s   |
+|---------------------|---------|-------------|---------|-------------|-----------|-----------|
+| 2023-05-18 06:40:20 |       1 |    9041.345 |   221.0 |      40.911 |  8592.240 |    511247 |
+| 2023-05-18 06:40:23 |       2 |   12336.280 |   324.0 |      38.075 | 10439.705 |        -1 |
+| 2023-05-18 06:40:25 |       3 |   15959.637 |   376.0 |      42.446 | 16725.326 |        -1 |
+| 2023-05-18 06:40:27 |       5 |   19727.549 |   516.0 |      38.232 | 17737.223 |    403844 |
+| 2023-05-18 06:40:30 |       8 |   21945.422 |   726.0 |      30.228 | 20931.607 |    421418 |
+| 2023-05-18 06:40:32 |      13 |   23098.930 |  1125.0 |      20.532 | 22236.824 |    198932 |
+| 2023-05-18 06:40:35 |      21 |   20485.059 |  2070.0 |       9.896 | 21066.568 |      2138 |
+| 2023-05-18 06:40:38 |      34 |   19123.058 |  3703.0 |       5.164 | 16604.666 |        -1 |
+| 2023-05-18 06:40:42 |      55 |   19289.153 |  6025.0 |       3.202 | 18482.289 |     88422 |
+| 2023-05-18 06:40:56 |      89 |   12257.733 | 12854.0 |       0.953 | 12144.653 |    470456 |
+|---------------------|---------|-------------|---------|-------------|-----------|-----------|
+Stopping, but lets give the threads some time to stop
+Finished
+```
+This is run on a Macbook M1 ;)
 
 ## General information
 This repo is about doing some load testing on Postgres.

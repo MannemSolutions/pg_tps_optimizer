@@ -124,7 +124,6 @@ impl Dsn {
         let conn_string = copy.as_str();
         let cert_file = self.get_value("sslcert", "");
         if !self.copy().use_tls() || cert_file.is_empty() {
-            println!("not using tls");
             return postgres::Client::connect(conn_string, NoTls).unwrap();
             // The source_connection object performs the actual communication
             // with the database, so spawn it off to run on its own.

@@ -85,7 +85,7 @@ impl Threader {
                 break;
             }
             let s = self.consume();
-            parallel_samples = parallel_samples.append(s);
+            parallel_samples = parallel_samples.append(&s);
             let test_result = parallel_samples.as_results(count, count + 1);
             //            let stddev = test_result.std_deviation_absolute().unwrap();
             //            println!("tps: {}, latency: {}", stddev.tps, stddev.latency);

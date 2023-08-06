@@ -244,11 +244,20 @@ impl ParallelSamples {
             .and_modify(|s| s.add(sample).unwrap())
             .or_insert(sample);
     }
-    pub fn append(mut self, samples: ParallelSamples) -> ParallelSamples {
-        for (_, sample) in samples.parallel_samples {
-            self.add(sample);
+    pub fn len(&self) -> usize {
+        self.parallel_samples.len()
+    }
+    pub fn limit(mut self, limit: usize) -> ParallelSamples {
+        for _ in limit..self.len() {
+            self.parallel_samples.pop_first();
         }
         self
+    }
+    pub fn append(mut self, samples: &ParallelSamples) -> ParallelSamples {
+        for (_, sample) in &samples.parallel_samples {
+            self.add(*sample);
+        }
+        self.limit(10)
     }
     pub fn as_results(&self, min: usize, max: usize) -> TestResults {
         let previous_timeslice = current_timeslice() - 1;
@@ -486,14 +495,23 @@ mod tests {
     fn test_parallel_samples() {
         let sample = create_test_sample(NUM_TRANSACTIONS, Duration::milliseconds(WAIT_MS));
         let ps = create_test_parasample(sample, NUM_THREADS);
-        let mut other = ps.clone();
-        other.timeslice += 1;
         let mut pss = ParallelSamples::new();
         pss.add(ps);
+        let mut other = ps.clone();
         let mut other_pss = ParallelSamples::new();
         other_pss.add(other);
-        pss = pss.clone().append(other_pss);
-        assert_eq!(pss.count(), 2);
+        for i in 1..11 {
+            assert_eq!(pss.len(), i);
+            other.timeslice += 1;
+            other_pss = ParallelSamples::new();
+            other_pss.add(other);
+            pss = pss.clone().append(&other_pss);
+        }
+        assert_eq!(pss.len(), 10);
+        pss = pss.limit(5);
+        assert_eq!(pss.len(), 5);
+        pss = pss.limit(100);
+        assert_eq!(pss.count(), 5);
     }
     #[test]
     fn test_results() {

@@ -1,4 +1,4 @@
-use crate::threader::samples::Sample;
+use crate::threader::samples::{ParallelSamples,Sample};
 use chrono::Utc;
 use postgres::Client;
 use std::sync::mpsc;
@@ -10,7 +10,7 @@ const TABLE_NAME: &str = "pg_tps_optimizer";
 
 pub struct Thread {
     id: u32,
-    tx: mpsc::Sender<Sample>,
+    tx: mpsc::Sender<ParallelSamples>,
     thread_lock: std::sync::Arc<std::sync::RwLock<bool>>,
     workload: Workload,
 }
@@ -18,7 +18,7 @@ pub struct Thread {
 impl Thread {
     pub fn new(
         id: u32,
-        tx: mpsc::Sender<Sample>,
+        tx: mpsc::Sender<ParallelSamples>,
         thread_lock: std::sync::Arc<std::sync::RwLock<bool>>,
         workload: Workload,
     ) -> Thread {
@@ -59,10 +59,12 @@ impl Thread {
                 }
             }
             match sample(&mut client, self.workload.w_type(), tps / 10_f64, self.id) {
-                Ok(samples) => {
+                Ok(sample) => {
                     //tps = samples.tot_tps_singlethread() as u64;
-                    self.tx.send(samples)?;
-                    tps = samples.tps();
+                    let mut pss = ParallelSamples::new();
+                    pss.add(sample.to_parallel_sample());
+                    self.tx.send(pss)?;
+                    tps = sample.tps();
                 }
                 Err(err) => {
                     println!("Error: {}", &err);

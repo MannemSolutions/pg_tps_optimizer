@@ -1,4 +1,4 @@
-use crate::threader::samples::{ParallelSamples, Sample, TestResult};
+use crate::threader::samples::{ParallelSamples, TestResult};
 use crate::threader::threads::Thread;
 use crate::threader::workload::Workload;
 use chrono::{Duration, Utc};
@@ -14,8 +14,8 @@ pub struct Threader {
     pub max_threads: u32,
     pub num_samples: u32,
     workload: Workload,
-    tx: mpsc::Sender<Sample>,
-    rx: mpsc::Receiver<Sample>,
+    tx: mpsc::Sender<ParallelSamples>,
+    rx: mpsc::Receiver<ParallelSamples>,
     thread_lock: Arc<RwLock<bool>>,
     threads: Vec<thread::JoinHandle<()>>,
 }
@@ -102,8 +102,6 @@ impl Threader {
     }
 
     fn consume(&mut self) -> ParallelSamples {
-        //With more threads (> 500) we have some issues, where the one main thread cannot consume messages fast enough.
-        //This function can downscale from 25 messages to 1 message.
         let wait = std::time::Duration::from_millis(10);
         let timeout = std::time::SystemTime::now() + std::time::Duration::from_millis(200);
         let mut parallel_samples = ParallelSamples::new();
@@ -115,9 +113,9 @@ impl Threader {
         loop {
             //               println!("looping");
             match self.rx.recv_timeout(wait) {
-                Ok(samples) => {
+                Ok(pss) => {
                     //        println!("adding");
-                    parallel_samples.add(samples.to_parallel_sample());
+                    parallel_samples = parallel_samples.append(&pss);
                 }
                 Err(_err) => (),
             };
@@ -125,11 +123,6 @@ impl Threader {
                 break;
             }
         }
-        //println!("{}", parallel_samples
-        //         .clone()
-        //         .into_iter()
-        //         .map(|s| s.avg_latency().num_milliseconds() as f64)
-        //         .sum::<f64>());
         return parallel_samples;
     }
 }

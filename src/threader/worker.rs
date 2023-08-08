@@ -1,4 +1,4 @@
-use crate::threader::samples::{ParallelSamples,Sample};
+use crate::threader::sample::{ParallelSamples,Sample};
 use chrono::Utc;
 use postgres::Client;
 use std::sync::mpsc;
@@ -8,24 +8,25 @@ use super::workload::{Workload, WorkloadType};
 
 const TABLE_NAME: &str = "pg_tps_optimizer";
 
-pub struct Thread {
+pub struct Worker {
     id: u32,
     tx: mpsc::Sender<ParallelSamples>,
-    thread_lock: std::sync::Arc<std::sync::RwLock<bool>>,
+    done: std::sync::Arc<std::sync::RwLock<bool>>,
     workload: Workload,
 }
 
-impl Thread {
+impl Worker {
     pub fn new(
         id: u32,
         tx: mpsc::Sender<ParallelSamples>,
-        thread_lock: std::sync::Arc<std::sync::RwLock<bool>>,
+        done: std::sync::Arc<std::sync::RwLock<bool>>,
         workload: Workload,
-    ) -> Thread {
-        Thread {
+    ) -> Worker {
+        //println!("Started new worker: {}", id);
+        Worker {
             id,
             tx,
-            thread_lock,
+            done,
             workload,
         }
     }
@@ -52,7 +53,7 @@ impl Thread {
         let mut client = self.initialize()?;
 
         loop {
-            if let Ok(done) = self.thread_lock.read() {
+            if let Ok(done) = self.done.read() {
                 // done is true when main thread decides we are there
                 if *done {
                     break;

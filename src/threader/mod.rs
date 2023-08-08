@@ -1,72 +1,80 @@
-use crate::threader::samples::{ParallelSamples, TestResult};
-use crate::threader::threads::Thread;
+use crate::threader::sample::{ParallelSamples, TestResult};
 use crate::threader::workload::Workload;
+use crate::threader::consumer::{Consumer, THREADS_PER_CONSUMER};
 use chrono::{Duration, Utc};
 use std::sync::{mpsc, Arc, RwLock};
 use std::thread;
 
-mod samples;
-mod threads;
+mod sample;
+mod worker;
+mod consumer;
 pub mod workload;
 
 pub struct Threader {
-    pub num_threads: u32,
-    pub max_threads: u32,
-    pub num_samples: u32,
+    pub num_workers: usize,
+    pub max_workers: usize,
+    //pub num_samples: u32,
     workload: Workload,
     tx: mpsc::Sender<ParallelSamples>,
     rx: mpsc::Receiver<ParallelSamples>,
-    thread_lock: Arc<RwLock<bool>>,
-    threads: Vec<thread::JoinHandle<()>>,
+    done: Arc<RwLock<bool>>,
+    consumers: Vec<Consumer>,
 }
 
 impl Threader {
-    pub fn new(mut max_threads: u32, workload: Workload) -> Threader {
-        if max_threads < 1 {
-            max_threads = 1000
+    pub fn new(mut max_workers: usize, workload: Workload) -> Threader {
+        if max_workers < 1 {
+            max_workers = 1000
         }
-        let thread_lock = Arc::new(RwLock::new(false));
+        max_workers /= THREADS_PER_CONSUMER as usize;
+        max_workers += 1;
+        let done = Arc::new(RwLock::new(false));
         let (tx, rx) = mpsc::channel();
-        let threads = Vec::with_capacity(max_threads as usize);
+        let consumers = Vec::with_capacity(max_workers as usize);
         Threader {
             workload,
-            num_threads: 0,
-            max_threads,
-            num_samples: 0,
+            num_workers: 0,
+            max_workers,
+            //num_samples: 0,
             tx,
             rx,
-            thread_lock,
-            threads,
+            done,
+            consumers
         }
     }
-    pub fn scaleup(&mut self, new_threads: u32) {
-        let mut thread_lock: Arc<RwLock<bool>>;
-        let mut thread_handle: thread::JoinHandle<()>;
-        for thread_id in self.num_threads..new_threads {
-            let thread_tx = self.tx.clone();
-            thread_lock = self.thread_lock.clone();
-            let workload: Workload = self.workload.clone();
-            thread_handle = thread::Builder::new()
-                .name(format!("child{}", thread_id).to_string())
-                .spawn(move || {
-                    Thread::new(thread_id, thread_tx, thread_lock, workload)
-                        .procedure()
-                        .unwrap();
-                })
-                .unwrap();
-            self.threads.push(thread_handle);
-            thread::sleep(std::time::Duration::from_millis(10));
+    pub fn scaleup(&mut self, new_workers: u32) {
+        let mut extra_workers = new_workers - self.num_workers as u32;
+        //println!("New worker: {}, extra workers: {}", new_workers, extra_workers);
+        match self.consumers.pop() {
+            Some(mut last_consumer) => {
+                extra_workers = last_consumer.scaleup(
+                    extra_workers,
+                    self.done.clone(),
+                    self.workload.clone());
+                self.consumers.push(last_consumer);
+            }
+            None => (),
         }
-        self.num_threads = new_threads;
-        self.num_samples = self.num_threads / 10;
+        for id in self.consumers.len()..self.max_workers {
+            if extra_workers == 0 {
+                break;
+            }
+            let mut new_consumer = Consumer::new(id as u32, self.tx.clone());
+            extra_workers = new_consumer.scaleup(
+                extra_workers,
+                self.done.clone(),
+                self.workload.clone(),
+                );
+            self.consumers.push(new_consumer);
+        }
+        self.num_workers = new_workers as usize;
     }
     pub fn finish(&self) {
-        let main_lock = self.thread_lock.clone();
-        if let Ok(mut done) = main_lock.write() {
+        if let Ok(mut done) = self.done.clone().write() {
             *done = true;
         }
 
-        let wait = self.num_threads * std::time::Duration::from_millis(100) / 10;
+        let wait = self.num_workers as u32 * std::time::Duration::from_millis(100) / 10;
 
         thread::sleep(wait);
     }
@@ -106,7 +114,7 @@ impl Threader {
         let timeout = std::time::SystemTime::now() + std::time::Duration::from_millis(200);
         let mut parallel_samples = ParallelSamples::new();
 
-        match self.thread_lock.read() {
+        match self.done.read() {
             Ok(_done) => (),
             Err(_err) => (),
         };

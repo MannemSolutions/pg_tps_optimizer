@@ -20,7 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (min_threads, max_threads) = args.range_min_max();
     let w: Workload = args.as_workload();
     println!("{}", w.as_string());
-    let mut threader = threader::Threader::new(max_threads, w);
+    let mut threader = threader::Threader::new(max_threads as usize, w);
     let mut sampler = pg_sampler::PgSampler::new(args.as_dsn())?;
     sampler.next()?;
 

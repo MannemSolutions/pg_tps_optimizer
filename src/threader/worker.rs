@@ -1,4 +1,4 @@
-use crate::threader::samples::Sample;
+use crate::threader::sample::{ParallelSamples,Sample};
 use chrono::Utc;
 use postgres::Client;
 use std::sync::mpsc;
@@ -8,24 +8,25 @@ use super::workload::{Workload, WorkloadType};
 
 const TABLE_NAME: &str = "pg_tps_optimizer";
 
-pub struct Thread {
+pub struct Worker {
     id: u32,
-    tx: mpsc::Sender<Sample>,
-    thread_lock: std::sync::Arc<std::sync::RwLock<bool>>,
+    tx: mpsc::Sender<ParallelSamples>,
+    done: std::sync::Arc<std::sync::RwLock<bool>>,
     workload: Workload,
 }
 
-impl Thread {
+impl Worker {
     pub fn new(
         id: u32,
-        tx: mpsc::Sender<Sample>,
-        thread_lock: std::sync::Arc<std::sync::RwLock<bool>>,
+        tx: mpsc::Sender<ParallelSamples>,
+        done: std::sync::Arc<std::sync::RwLock<bool>>,
         workload: Workload,
-    ) -> Thread {
-        Thread {
+    ) -> Worker {
+        //println!("Started new worker: {}", id);
+        Worker {
             id,
             tx,
-            thread_lock,
+            done,
             workload,
         }
     }
@@ -52,17 +53,19 @@ impl Thread {
         let mut client = self.initialize()?;
 
         loop {
-            if let Ok(done) = self.thread_lock.read() {
+            if let Ok(done) = self.done.read() {
                 // done is true when main thread decides we are there
                 if *done {
                     break;
                 }
             }
             match sample(&mut client, self.workload.w_type(), tps / 10_f64, self.id) {
-                Ok(samples) => {
+                Ok(sample) => {
                     //tps = samples.tot_tps_singlethread() as u64;
-                    self.tx.send(samples)?;
-                    tps = samples.tps();
+                    let mut pss = ParallelSamples::new();
+                    pss.add(sample.to_parallel_sample());
+                    self.tx.send(pss)?;
+                    tps = sample.tps();
                 }
                 Err(err) => {
                     println!("Error: {}", &err);

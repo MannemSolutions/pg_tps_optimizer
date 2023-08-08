@@ -257,7 +257,7 @@ impl ParallelSamples {
         for (_, sample) in &samples.parallel_samples {
             self.add(*sample);
         }
-        self.limit(10)
+        self.limit(100)
     }
     pub fn as_results(&self, min: usize, max: usize) -> TestResults {
         let previous_timeslice = current_timeslice() - 1;
@@ -500,14 +500,14 @@ mod tests {
         let mut other = ps.clone();
         let mut other_pss = ParallelSamples::new();
         other_pss.add(other);
-        for i in 1..11 {
+        for i in 1..101 {
             assert_eq!(pss.len(), i);
             other.timeslice += 1;
             other_pss = ParallelSamples::new();
             other_pss.add(other);
             pss = pss.clone().append(&other_pss);
         }
-        assert_eq!(pss.len(), 10);
+        assert_eq!(pss.len(), 100);
         pss = pss.limit(5);
         assert_eq!(pss.len(), 5);
         pss = pss.limit(100);

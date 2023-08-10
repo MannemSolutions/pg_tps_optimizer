@@ -87,11 +87,12 @@ impl Threader {
     ) -> Option<TestResult> {
         let end_time = Utc::now() + max_wait;
         let mut parallel_samples = ParallelSamples::new();
-        let i: usize = 0;
+        let mut i: usize = 0;
         loop {
             if i > count && Utc::now() > end_time {
                 break;
             }
+            i += 1;
             let s = self.consume();
             parallel_samples = parallel_samples.append(&s);
             let test_result = parallel_samples.as_results(count, count + 1);

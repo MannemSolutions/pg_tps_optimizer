@@ -1,6 +1,6 @@
 [package]
 name = "pg_tps_optimizer"
-version = "0.2.1"
+version = "0.2.2"
 authors = ["Sebastiaan Mannem <sebastiaan.mannem@enterprisedb.com>"]
 edition = "2018"
 

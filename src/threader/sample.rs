@@ -196,6 +196,7 @@ impl ParallelSample {
     }
     pub fn as_testresult(&self) -> TestResult {
         TestResult {
+            stable: false,
             tps: self.tot_tps(),
             latency: self.avg_latency(),
         }
@@ -286,6 +287,7 @@ impl ParallelSamples {
 }
 
 pub struct TestResult {
+    pub stable: bool,
     pub tps: f64,
     pub latency: Duration,
 }
@@ -332,13 +334,14 @@ impl TestResults {
     fn len(&self) -> usize {
         self.results.len()
     }
-    fn mean(&self) -> Option<TestResult> {
+    pub fn mean(&self) -> Option<TestResult> {
         let sum_tps = self.tot_tps();
         let avg_latency = self.avg_latency();
         let count = self.len();
 
         match count {
             positive if positive > 0 => Some(TestResult {
+                stable: false,
                 tps: sum_tps / (count as f64),
                 latency: avg_latency,
             }),
@@ -371,6 +374,7 @@ impl TestResults {
                     / count as f64;
 
                 Some(TestResult {
+                    stable: false,
                     tps: tps_variance.sqrt(),
                     latency: Duration::microseconds(lat_variance.sqrt() as i64),
                 })
@@ -394,7 +398,7 @@ impl TestResults {
             return None;
         }
         match (self.std_deviation_absolute(), self.mean()) {
-            (Some(stdev), Some(mean)) => {
+            (Some(stdev), Some(mut mean)) => {
                 if !((0.0..spread).contains(&percent_of(mean.tps, stdev.tps))
                     && (0.0..spread).contains(&percent_of(
                         mean.latency.num_microseconds().unwrap_or(0) as f64,
@@ -403,6 +407,7 @@ impl TestResults {
                 {
                     return None;
                 } else {
+                    mean.stable = true;
                     return Some(mean);
                 }
             }

@@ -23,16 +23,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut threader = threader::Threader::new(max_threads as usize, w);
     let mut sampler = pg_sampler::PgSampler::new(args.as_dsn())?;
     sampler.next()?;
+    let mut instable: bool = false;
 
     println!("min threads: {} max threads: {}", min_threads, max_threads);
 
-    println!("|---------------------|---------|---------------------------------------|-----------------------|");
-    println!("| Date       time     | Clients |               Performance             |       Postgres        |");
-    println!("|                     |         |-------------|-----------|-------------|-----------|-----------|");
-    println!("|                     |         |    TPS      |  Latency  | TPS/Latency |   TPS     |    wal    |");
-    println!("|                     |         |             |   (usec)  |             |           |    kB/s   |");
-    println!("|---------------------|---------|-------------|---- -------|-------------|-----------|-----------|");
-    //        2019-06-24 11:33:23 |       1 | 2.105.090 |  10.121 | 2.168.312 | 1.105.131 |
+    println!("|---------------------|---------|-----------------------------------------|-----------------------|");
+    println!("| Date       time     | Clients |                 Performance             |       Postgres        |");
+    println!("|                     |         |---------------|-----------|-------------|-----------|-----------|");
+    println!("|                     |         |      TPS      |  Latency  | TPS/Latency |   TPS     |    wal    |");
+    println!("|                     |         |               |   (usec)  |             |           |    kB/s   |");
+    println!("|---------------------|---------|---------------|-----------|-------------|-----------|-----------|");
 
     for num_threads in Fibonacci::new(1_u32, 1_u32).take_while(|v| *v < max_threads) {
         if num_threads < min_threads {
@@ -45,10 +45,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 sampler.next()?;
                 let latency = result.latency.num_microseconds().unwrap() as f64;
                 let pg_tps: f64 = sampler.tps() as f64;
+                if !result.stable {
+                    instable = true;
+                }
                 println!(
-                    "| {0} | {1:7.5} | {2:>11.3} | {3:>9.1} | {4:>11.3} | {5:>9.3} | {6:>9.3} |",
+                    "| {0} | {1:7.5} | {2} {3:>11.3} | {4:>9.1} | {5:>11.3} | {6:>9.3} | {7:>9.3} |",
                     chrono::offset::Local::now().format("%Y-%m-%d %H:%M:%S"),
                     num_threads,
+                    match result.stable {
+                        true => " ",
+                        _ => "*",
+                    },
                     result.tps,
                     latency,
                     result.tps / latency,
@@ -57,22 +64,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     );
             }
             None => {
-                println!(
-                    "| {0} | {1:7.5} | {2:>11.3} | {3:>9.1} | {4:>11.3} | {5:>9.3} | {6:>9.3} |",
-                    chrono::offset::Local::now().format("%Y-%m-%d %H:%M:%S"),
-                    num_threads,
-                    "?",
-                    "?",
-                    "?",
-                    "?",
-                    "?"
-                    );
+                println!("| {0} | {1:7.5} |   {2:>11.3} | {3:>9.1} | {4:>11.3} | {5:>9.3} | {6:>9.3} |",
+                         chrono::offset::Local::now().format("%Y-%m-%d %H:%M:%S"),
+                         num_threads, "?", "?", "?", "?", "?");
                 break;
             }
         }
     }
-    println!("|---------------------|---------|-------------|---------|-------------|-----------|-----------|");
+    println!("|---------------------|---------|---------------|-----------|-------------|-----------|-----------|");
 
+    if instable {
+        println!("* Samples marked with '*' did not stabilize before max-wait.")
+    }
     println!("Stopping, but lets give the threads some time to stop");
     threader.finish();
 

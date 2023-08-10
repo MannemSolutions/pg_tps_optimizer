@@ -44,27 +44,52 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Some(result) => {
                 sampler.next()?;
                 let latency = result.latency.num_microseconds().unwrap() as f64;
+                let pg_tps: f64 = sampler.tps() as f64;
+                if result.tps / pg_tps > 10_f64 {
+                    println!(
+                        "| {0} | {1:7.5} | OVEREXCITED | {2:>7.1} | OVEREXCITED | {3:>9.3} | {4:>9.3} |",
+                        chrono::offset::Local::now().format("%Y-%m-%d %H:%M:%S"),
+                        num_threads,
+                        latency,
+                        sampler.tps(),
+                        sampler.wal_per_sec() as i32,
+                        );
+                } else if result.tps < 1_f64 {
+                    println!(
+                        "| {0} | {1:7.5} |  TOO_SMALL  | {2:>7.1} |  TOO_SMALL  | {3:>9.3} | {4:>9.3} |",
+                        chrono::offset::Local::now().format("%Y-%m-%d %H:%M:%S"),
+                        num_threads,
+                        latency,
+                        sampler.tps(),
+                        sampler.wal_per_sec() as i32,
+                        );
+                    break;
+                } else {
+                    println!(
+                        "| {0} | {1:7.5} | {2:>11.3} | {3:>7.1} | {4:>11.3} | {5:>9.3} | {6:>9.3} |",
+                        chrono::offset::Local::now().format("%Y-%m-%d %H:%M:%S"),
+                        num_threads,
+                        result.tps,
+                        latency,
+                        result.tps / latency,
+                        pg_tps,
+                        sampler.wal_per_sec() as i32,
+                        );
+                }
+            }
+            None => {
                 println!(
                     "| {0} | {1:7.5} | {2:>11.3} | {3:>7.1} | {4:>11.3} | {5:>9.3} | {6:>9.3} |",
                     chrono::offset::Local::now().format("%Y-%m-%d %H:%M:%S"),
                     num_threads,
-                    result.tps,
-                    latency,
-                    result.tps / latency,
-                    sampler.tps(),
-                    sampler.wal_per_sec() as i32,
-                )
+                    "?",
+                    "?",
+                    "?",
+                    "?",
+                    "?"
+                    );
+                break;
             }
-            None => println!(
-                "| {0} | {1:7.5} | {2:>11.3} | {3:>7.1} | {4:>11.3} | {5:>9.3} | {6:>9.3} |",
-                chrono::offset::Local::now().format("%Y-%m-%d %H:%M:%S"),
-                num_threads,
-                "?",
-                "?",
-                "?",
-                "?",
-                "?"
-            ),
         }
     }
     println!("|---------------------|---------|-------------|---------|-------------|-----------|-----------|");

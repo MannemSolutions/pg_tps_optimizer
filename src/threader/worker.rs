@@ -59,7 +59,7 @@ impl Worker {
                     break;
                 }
             }
-            match sample(&mut client, self.workload.w_type(), tps / 10_f64, self.id) {
+            match sample(&mut client, self.workload.w_type(), (tps / 10_f64) as u64, self.id) {
                 Ok(sample) => {
                     //tps = samples.tot_tps_singlethread() as u64;
                     let mut pss = ParallelSamples::new();
@@ -82,16 +82,16 @@ impl Worker {
 fn sample(
     client: &mut Client,
     w_type: WorkloadType,
-    mut num_queries: f64,
+    mut num_queries: u64,
     thread_id: u32,
 ) -> Result<Sample, postgres::Error> {
-    if num_queries < 1_f64 {
-        num_queries = 1_f64;
+    if num_queries < 1 {
+        num_queries = 1;
     }
     let mut s = Sample::new();
     let query = format!("update {} set id=$1 where id=$1", TABLE_NAME);
 
-    for _x in 1..(num_queries as u64) {
+    for _x in 0..num_queries {
         let start = Utc::now();
         match w_type {
             WorkloadType::Prepared => {

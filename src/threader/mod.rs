@@ -87,26 +87,24 @@ impl Threader {
     ) -> Option<TestResult> {
         let end_time = Utc::now() + max_wait;
         let mut parallel_samples = ParallelSamples::new();
-        let i: usize = 0;
+        let mut i: usize = 0;
         loop {
-            if i > count && Utc::now() > end_time {
-                break;
-            }
             let s = self.consume();
             parallel_samples = parallel_samples.append(&s);
-            let test_result = parallel_samples.as_results(count, count + 1);
+            let test_results = parallel_samples.as_results(count, count + 1);
             //            let stddev = test_result.std_deviation_absolute().unwrap();
             //            println!("tps: {}, latency: {}", stddev.tps, stddev.latency);
-            match test_result.verify(spread) {
+            if i > count && Utc::now() > end_time {
+                return test_results.mean();
+            }
+            i += 1;
+            match test_results.verify(spread) {
                 Some(test_result) => {
                     return Some(test_result);
                 }
-                None => {
-                    continue;
-                }
+                None => (),
             }
         }
-        None
     }
 
     fn consume(&mut self) -> ParallelSamples {

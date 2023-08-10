@@ -31,13 +31,15 @@ Therefore we have multiple structures. How it works (and some definitions):
 
 use std::vec::Vec;
 use std::{collections::BTreeMap, iter::FromIterator};
+use std::convert::TryFrom;
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
+use num::integer::Roots;
 
 // A sample is one thread trying to run as many transactions as possible
 // for 100msec and keeping track of results
 pub struct Sample {
-    transactions: u32,
+    transactions: u64,
     wait: Duration,
     start: DateTime<Utc>,
     end: DateTime<Utc>,
@@ -56,6 +58,21 @@ fn percent_of(first: f64, second: f64) -> f64 {
         return 0.0;
     }
     return 100.0 * second / first;
+}
+
+/* Duration supports a div by i32, but sometimes we have an overflow if we use that option*/
+fn div_duration(d: Duration, x: u64) -> Duration {
+    const MAX_U32: u64 = i32::MAX as u64;
+    if x == 0 {
+        return Duration::zero();
+    } else if x > MAX_U32 {
+        match i32::try_from(x.sqrt()).ok() {
+            Some(rt) => return d / rt,
+            None => panic!("that is some unexpected divisor: {}", x),
+        }
+    } else {
+        d / (x as i32)
+    }
 }
 
 impl Copy for Sample {}
@@ -120,10 +137,10 @@ impl Sample {
 // which only has the summaries data from all added samples.
 pub struct ParallelSample {
     pub timeslice: u32,
-    total_transactions: u32,
+    total_transactions: u64,
     total_waits: Duration,
     total_duration: Duration,
-    pub num_samples: u32,
+    pub num_samples: u64,
 }
 
 impl Copy for ParallelSample {}
@@ -137,10 +154,7 @@ impl Clone for ParallelSample {
 impl ParallelSample {
     // avg latency is the average amount of waits over all samples contained
     pub fn avg_latency(&self) -> Duration {
-        match self.total_transactions {
-            0 => Duration::zero(),
-            _ => self.total_waits / (self.total_transactions as i32),
-        }
+        div_duration(self.total_waits, self.total_transactions)
     }
     /*
     // initialize a new without data
@@ -172,13 +186,12 @@ impl ParallelSample {
         if self.num_samples < 1 {
             return 0.0;
         }
-        let num_samples = self.num_samples as i32;
-        let duration: f64 = (self.total_duration / num_samples)
+        let duration_ns: f64 = div_duration(self.total_duration, self.num_samples)
             .num_nanoseconds()
             .unwrap() as f64;
-        match duration == 0.0 {
-            true => 0.0,
-            false => 1e9_f64 * (self.total_transactions as f64) / duration,
+        match duration_ns < 1_f64 {
+            true => 0_f64,
+            false => 1e9_f64 * (self.total_transactions as f64) / duration_ns,
         }
     }
     pub fn as_testresult(&self) -> TestResult {
@@ -305,16 +318,16 @@ impl TestResults {
         // I wished I could do something like this instead:
         // self.results.iter().map(|tr| tr.latency).sum::<Duration>();
         // But I get `the trait bound `chrono::Duration: Sum` is not satisfied`
-        let mut num: i32 = 0;
+        let mut num: u64 = 0;
         let mut tot_lat = Duration::zero();
         for tr in self.results.clone() {
             tot_lat = tot_lat + tr.latency;
             num += 1
         }
-        if num == 0 {
-            return tot_lat;
+        match num {
+            0 => tot_lat,
+            _ => div_duration(tot_lat,  num)
         }
-        tot_lat / num
     }
     fn len(&self) -> usize {
         self.results.len()
@@ -438,7 +451,7 @@ mod tests {
         mut ps: ParallelSample,
         from_ts: u32,
         num_ts: usize,
-        increase: u32,
+        increase: u64,
     ) -> ParallelSamples {
         let mut pps = ParallelSamples::new();
         for slice in from_ts..(from_ts + num_ts as u32) {

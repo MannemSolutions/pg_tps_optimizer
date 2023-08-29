@@ -38,6 +38,7 @@ pub struct Params {
 
     /// Testrange
     #[structopt(
+        default_value,
         short,
         long,
         help = "you can set min and max of numclients if you know (default 1:1000)"
@@ -46,23 +47,29 @@ pub struct Params {
 
     /// spread
     #[structopt(
+        default_value,
         short,
         long,
         help = "you can set the spread that defines if the clients run stable."
     )]
     pub spread: f64,
 
-    /// min_
-    #[structopt(short, long, help = "number of samples before we check the spread.")]
+    /// min_samples
+    #[structopt(
+        default_value,
+        short,
+        long,
+        help = "number of samples before we check the spread.")]
     pub min_samples: u32,
 
     /// max_wait
     #[structopt(
+        default_value="",
         short,
         long,
         help = "Give it this ammount of seconds before we decide it wil never stabilize."
     )]
-    pub max_wait: DurationString,
+    pub max_wait: String,
 }
 
 impl Params {
@@ -85,6 +92,9 @@ impl Params {
             &String::from("PGTPSRANGE"),
             &String::from("1:1000"),
         );
+        args.max_wait = generic::get_env_str(&args.max_wait, "PGTPSMAXWAIT", "10s");
+        args.spread = generic::get_env_f64(args.spread, "PGTPSSPREAD", 10.0);
+        args.min_samples = generic::get_env_u32(args.min_samples, "PGTPSMINSAMPLES", 10);
         args
     }
     pub fn as_dsn(&self) -> Dsn {
@@ -97,6 +107,15 @@ impl Params {
             self.transactional,
             self.prepared,
         )
+    }
+    pub fn as_max_wait(&self) -> chrono::Duration {
+        match DurationString::from_string(self.max_wait.clone()) {
+            Ok(ds) => match chrono::Duration::from_std(ds.into()) {
+                Ok(duration) => duration,
+                Err(_) => panic!("invalid value for max_wait: {} is not a Duration", self.max_wait),
+            }
+            Err(_) => panic!("invalid value for max_wait: {} is not a Duration", self.max_wait),
+        }
     }
     pub fn range_min_max(&self) -> (u32, u32) {
         let re = regex::Regex::new(r"\d+").unwrap();

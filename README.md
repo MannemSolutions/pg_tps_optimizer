@@ -8,7 +8,7 @@ If you want to download the binary and run the tool directly:
 ```
 curl -OL https://github.com/MannemSolutions/pg_tps_optimizer/releases/download/v0.1.3/pg_tps_optimizer_v0.1.3_x86_64-unknown-linux-musl.zip
 unzip pg_tps_optimizer*.zip
-./pg_tps_optimizer --dsn 'host=server1,user=postgres,dbname=postgres,password=password123' --max-wait 10s --min-samples 10 --range 200 --spread 10
+./pg_tps_optimizer --dsn 'host=server1 user=postgres dbname=postgres password=password123' --max-wait 10s --min-samples 10 --range 200 --spread 10
 ```
 **Note** that with the binary you need to set all the arguments as shown in the above example...
 
@@ -32,10 +32,11 @@ If you wanna change options, you can:
   In both cases 89 is the last step...
 - set `--spread` to be more precise in when the tool decides a step is considered 'stable'.
 
+
 Example:
 ```
 docker run -e PGHOST=server1,PGUSER=postgres,PGDATABASE=postgres,PGPASSWORD=password123 mannemsolutions/pg_tps_optimizer \
-  --max-wait 20s --min-samples 20 --range 200 --spread 5
+  --max-wait 20s --min-samples 20 --range 101 --spread 5
 ```
 This will do the following:
 - wait 20 seconds before a step is timed out
@@ -50,7 +51,8 @@ Initializing
 dsn:dbname=postgres host=postgres sslcert=/host/config/tls/int_client/certs/postgres.pem sslcrl= sslkey=/host/config/tls/int_client/private/postgres.key.pem sslmode=prefer sslrootcert=/host/config/tls/int_server/certs/ca-chain-bundle.cert.pem user=postgres
 transactional: false
 prepared: false
-min threads: 1 max threads: 100
+min threads: 1 max threads: 101
+max_wait: 20s, min_samples: 20, spread: 5
 |---------------------|---------|-------------------------------------|-----------------------|
 | Date       time     | Clients |              Performance            |       Postgres        |
 |                     |         |-------------|---------|-------------|-----------|-----------|
@@ -71,7 +73,38 @@ min threads: 1 max threads: 100
 Stopping, but lets give the threads some time to stop
 Finished
 ```
+
 This is run on a Macbook M1 ;)
+### Environment variables
+pg_tps_optimizer supports these environment variables to be used.
+
+PGHOST=/tmp
+PGUSER=$(id -u -n) # Defaults to current user
+PGDATABASE=${PGUSER}
+PGPASSWORD=***** # Defaults to emptystring which basically cannot work. For ident, trust, cert, etc. Just set a dummy password.
+PGSSLMODE=prefer
+PGSSLCERT=~/.postgresql/postgresql.crt
+PGSSLKEY=~/.postgresql/postgresql.key
+PGSSLROOTCERT=~/.postgresql/root.crt
+PGSSLCRL=~/.postgresql/root.crl
+
+PGTPSSOURCE="" # The source actually is combined with the values from the PG... ENV variables.
+PGTPSQUERY="select * from pg_tables"
+PGTPSPREPARED=false
+PGTPSTRANSACTIONAL-false
+PGTPSRANGE=1:1000
+PGTPSMAXWAIT=10s
+PGTPSSPREAD=10.0
+PGTPSMINSAMPLES=10
+
+**Note** that Argumnets have precedence over Environment variables.
+
+Example:
+```
+docker run -e PGHOST=server1,PGUSER=postgres,PGDATABASE=postgres,PGPASSWORD=password123,\
+PGTPSMAXWAIT=20s,PGTPSMINSAMPLES=20,PGTPSRANGE=200,PGTPSSPREAD=5 mannemsolutions/pg_tps_optimizer
+```
+This will do the same as the previous example.
 
 ## General information
 This repo is about doing some load testing on Postgres.

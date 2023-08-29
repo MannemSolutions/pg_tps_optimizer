@@ -82,6 +82,10 @@ impl Dsn {
             generic::get_env_path("", "PGSSLROOTCERT", "~/.postgresql/root.crt"),
         );
         kv.insert(
+            "password".to_string(),
+            generic::get_env_path("", "PGPASSWORD", ""),
+        );
+        kv.insert(
             "sslcrl".to_string(),
             generic::get_env_path("", "PGSSLCRL", "~/.postgresql/root.crl"),
         );

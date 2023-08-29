@@ -24,8 +24,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut sampler = pg_sampler::PgSampler::new(args.as_dsn())?;
     sampler.next()?;
     let mut instable: bool = false;
+    let max_wait: chrono::Duration = args.as_max_wait();
 
     println!("min threads: {} max threads: {}", min_threads, max_threads);
+    println!("max_wait: {}s, min_samples: {}, spread: {}", max_wait.num_seconds(), args.min_samples, args.spread);
 
     println!("|---------------------|---------|-----------------------------------------|-----------------------|");
     println!("| Date       time     | Clients |                 Performance             |       Postgres        |");
@@ -39,8 +41,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             continue;
         }
         threader.scaleup(num_threads);
-        let d: chrono::Duration = chrono::Duration::from_std(args.max_wait.into())?;
-        match threader.wait_stable(args.spread, args.min_samples as usize, d) {
+        match threader.wait_stable(args.spread, args.min_samples as usize, max_wait) {
             Some(result) => {
                 sampler.next()?;
                 let latency = result.latency.num_microseconds().unwrap() as f64;

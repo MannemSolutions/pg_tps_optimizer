@@ -10,6 +10,32 @@ pub fn get_env_str(val: &str, env_key: &str, default: &str) -> String {
     }
 }
 
+pub fn get_env_f64(val: f64, env_key: &str, default: f64) -> f64 {
+    if val!=0.0_f64 {
+        return val;
+    }
+    match env::var(env_key) {
+        Ok(env_val) => match env_val.parse::<f64>() {
+            Ok(f) => f,
+            Err(_) => default,
+        },
+        Err(_e) => default,
+    }
+}
+
+pub fn get_env_u32(val: u32, env_key: &str, default: u32) -> u32 {
+    if val!=0 {
+         return val;
+    }
+    match env::var(env_key) {
+        Ok(env_val) => match env_val.parse::<u32>() {
+            Ok(u) => u,
+            Err(_) => default,
+        },
+        Err(_e) => default,
+    }
+}
+
 fn shell_expand(path: &str) -> String {
     shellexpand::tilde(path).to_string()
 }

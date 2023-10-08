@@ -36,7 +36,7 @@ If you wanna change options, you can:
 Example:
 ```
 docker run -e PGHOST=server1,PGUSER=postgres,PGDATABASE=postgres,PGPASSWORD=password123 mannemsolutions/pg_tps_optimizer \
-  --max-wait 20s --min-samples 20 --range 101 --spread 5
+  --max-wait 20s --min-samples 20 --range 200 --spread 5
 ```
 This will do the following:
 - wait 20 seconds before a step is timed out
@@ -69,6 +69,7 @@ max_wait: 20s, min_samples: 20, spread: 5
 | 2023-05-18 06:40:38 |      34 |   19123.058 |  3703.0 |       5.164 | 16604.666 |        -1 |
 | 2023-05-18 06:40:42 |      55 |   19289.153 |  6025.0 |       3.202 | 18482.289 |     88422 |
 | 2023-05-18 06:40:56 |      89 |   12257.733 | 12854.0 |       0.953 | 12144.653 |    470456 |
+| 2023-05-18 06:41:13 |     133 |    8232.331 | 20325.0 |       0.405 |  8234.765 |    278341 |
 |---------------------|---------|-------------|---------|-------------|-----------|-----------|
 Stopping, but lets give the threads some time to stop
 Finished

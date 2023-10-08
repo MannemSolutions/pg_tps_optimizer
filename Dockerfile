@@ -11,4 +11,3 @@ COPY --from=builder /usr/local/cargo/bin/pg_tps_optimizer /usr/local/bin/pg_tps_
 
 COPY README.md LICENSE .
 ENTRYPOINT [ "/usr/local/bin/pg_tps_optimizer" ]
-CMD ["--max-wait", "10s", "--min-samples", "10", "--range", "100", "--spread", "10"]

@@ -57,7 +57,7 @@ pub struct Params {
     /// min_samples
     #[structopt(
         default_value,
-        short,
+        short = "m",
         long,
         help = "number of samples before we check the spread.")]
     pub min_samples: u32,
@@ -65,7 +65,7 @@ pub struct Params {
     /// max_wait
     #[structopt(
         default_value="",
-        short,
+        short = "M",
         long,
         help = "Give it this ammount of seconds before we decide it wil never stabilize."
     )]

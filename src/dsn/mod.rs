@@ -64,6 +64,10 @@ impl Dsn {
             generic::get_env_str("", "PGDATABASE", os_user_name().as_str()),
         );
         kv.insert(
+            "port".to_string(),
+            generic::get_env_str("", "PGPORT", "5432"),
+        );
+        kv.insert(
             "host".to_string(),
             generic::get_env_str("", "PGHOST", "/tmp"),
         );
@@ -83,7 +87,9 @@ impl Dsn {
         );
         kv.insert(
             "password".to_string(),
-            generic::get_env_str("", "PGPASSWORD", " "),
+            // Annoyingly, rust module does not work well with empty password
+            // So, for empty [assword we use a string containing just a letter p
+            generic::get_env_str("", "PGPASSWORD", ""),
         );
         kv.insert(
             "sslcrl".to_string(),
@@ -93,8 +99,10 @@ impl Dsn {
     }
     pub fn to_string(&self) -> String {
         let mut vec = Vec::new();
-        for (k, v) in self.clone().kv {
-            vec.push(format!("{0}={1}", k, v))
+        for (k, mut v) in self.clone().kv {
+            v = v.replace(r"\", r"\\");
+            v = v.replace("'", r"\'");
+            vec.push(format!("{0}='{1}'", k, v))
         }
         vec.sort();
         vec.join(" ")

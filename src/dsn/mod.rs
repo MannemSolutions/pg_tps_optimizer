@@ -83,7 +83,7 @@ impl Dsn {
         );
         kv.insert(
             "password".to_string(),
-            generic::get_env_path("", "PGPASSWORD", ""),
+            generic::get_env_str("", "PGPASSWORD", " "),
         );
         kv.insert(
             "sslcrl".to_string(),

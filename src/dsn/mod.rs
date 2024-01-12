@@ -196,14 +196,16 @@ mod tests {
         assert_eq!(d.verify_hostname(), true);
         let home_dir = home::home_dir().unwrap().display().to_string();
         let expected = concat!(
-            "dbname=there ",
-            "host=here ",
-            "sslcert=~/cert ",
-            "sslcrl=~/crl ",
-            "sslkey=~/key ",
-            "sslmode=verify-full ",
-            "sslrootcert=~/root ",
-            "user=me",
+            "dbname='there' ",
+            "host='here' ",
+            "password='' ",
+            "port='5432' ",
+            "sslcert='~/cert' ",
+            "sslcrl='~/crl' ",
+            "sslkey='~/key' ",
+            "sslmode='verify-full' ",
+            "sslrootcert='~/root' ",
+            "user='me'",
         );
         assert_eq!(d.to_string(), expected.replace("~", home_dir.as_str()),);
         // and unset them
@@ -215,7 +217,7 @@ mod tests {
         assert_eq!(d.use_tls(), true);
         assert_eq!(
             d.cleanse().to_string(),
-            format!(concat!("dbname={0} host=/tmp user={0}"), os_user_name())
+            format!(concat!("dbname='{0}' host='/tmp' password='' port='5432' user='{0}'"), os_user_name())
         );
         let sslcert = generic::shell_exists("~/.postgresql/postgresql.crt");
         let sslcrl = generic::shell_exists("~/.postgresql/root.crl");
@@ -225,14 +227,16 @@ mod tests {
             d.to_string(),
             format!(
                 concat!(
-                    "dbname={0} ",
-                    "host=/tmp ",
-                    "sslcert={1} ",
-                    "sslcrl={2} ",
-                    "sslkey={3} ",
-                    "sslmode=prefer ",
-                    "sslrootcert={4} ",
-                    "user={0}"
+                    "dbname='{0}' ",
+                    "host='/tmp' ",
+                    "password='' ",
+                    "port='5432' ",
+                    "sslcert='{1}' ",
+                    "sslcrl='{2}' ",
+                    "sslkey='{3}' ",
+                    "sslmode='prefer' ",
+                    "sslrootcert='{4}' ",
+                    "user='{0}'"
                 ),
                 os_user_name(),
                 sslcert,

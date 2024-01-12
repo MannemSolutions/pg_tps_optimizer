@@ -31,3 +31,4 @@ services:
       PGSSLCERT: /host/config/tls/int_client/certs/postgres.pem
       PGSSLKEY: /host/config/tls/int_client/private/postgres.key.pem
       PGSSLROOTCERT: /host/config/tls/int_server/certs/ca-chain-bundle.cert.pem
+      PGTPSRANGE: '1:100'

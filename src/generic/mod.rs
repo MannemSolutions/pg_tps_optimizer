@@ -2,16 +2,16 @@ use std::env;
 
 pub fn get_env_str(val: &str, env_key: &str, default: &str) -> String {
     if !val.is_empty() {
-        return format!("{}", val);
+        return val.to_string();
     }
     match env::var(env_key) {
         Ok(env_val) => env_val,
-        Err(_e) => format!("{}", default),
+        Err(_e) => default.to_string(),
     }
 }
 
 pub fn get_env_f64(val: f64, env_key: &str, default: f64) -> f64 {
-    if val!=0.0_f64 {
+    if val != 0.0_f64 {
         return val;
     }
     match env::var(env_key) {
@@ -24,8 +24,8 @@ pub fn get_env_f64(val: f64, env_key: &str, default: f64) -> f64 {
 }
 
 pub fn get_env_u32(val: u32, env_key: &str, default: u32) -> u32 {
-    if val!=0 {
-         return val;
+    if val != 0 {
+        return val;
     }
     match env::var(env_key) {
         Ok(env_val) => match env_val.parse::<u32>() {
@@ -50,13 +50,11 @@ pub fn shell_exists(path: &str) -> String {
 
 pub fn get_env_path(val: &str, env_key: &str, default: &str) -> String {
     if !val.is_empty() {
-        return format!("{}", shell_expand(val));
+        return shell_expand(val).to_string();
     }
     match env::var(env_key) {
         Ok(env_val) => shell_expand(env_val.as_str()),
-        Err(_e) => {
-            format!("{}", shell_exists(default))
-        }
+        Err(_e) => shell_exists(default).to_string(),
     }
 }
 
@@ -64,7 +62,7 @@ pub fn get_env_bool(val: bool, env_key: &str) -> bool {
     if val {
         return val;
     }
-    if let Ok(_) = env::var(env_key) {
+    if env::var(env_key).is_ok() {
         return true;
     }
     false

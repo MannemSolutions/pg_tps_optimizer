@@ -2,7 +2,6 @@ use crate::dsn::Dsn;
 use crate::generic;
 use crate::threader::workload::Workload;
 use duration_string::DurationString;
-use regex;
 use structopt::StructOpt;
 
 /// Search for a pattern in a file and display the lines that contain it.
@@ -59,12 +58,13 @@ pub struct Params {
         default_value,
         short = "m",
         long,
-        help = "number of samples before we check the spread.")]
+        help = "number of samples before we check the spread."
+    )]
     pub min_samples: u32,
 
     /// max_wait
     #[structopt(
-        default_value="",
+        default_value = "",
         short = "M",
         long,
         help = "Give it this ammount of seconds before we decide it wil never stabilize."
@@ -78,7 +78,7 @@ impl Params {
     }
     pub fn get_args() -> Params {
         let mut args = Params::from_args();
-        args.dsn = generic::get_env_str(&args.dsn, &String::from("PGTPSSOURCE"), &String::from(""));
+        args.dsn = generic::get_env_str(&args.dsn, &String::from("PGTPSSOURCE"), "");
         args.query = generic::get_env_str(
             &args.query,
             &String::from("PGTPSQUERY"),
@@ -112,9 +112,15 @@ impl Params {
         match DurationString::from_string(self.max_wait.clone()) {
             Ok(ds) => match chrono::Duration::from_std(ds.into()) {
                 Ok(duration) => duration,
-                Err(_) => panic!("invalid value for max_wait: {} is not a Duration", self.max_wait),
-            }
-            Err(_) => panic!("invalid value for max_wait: {} is not a Duration", self.max_wait),
+                Err(_) => panic!(
+                    "invalid value for max_wait: {} is not a Duration",
+                    self.max_wait
+                ),
+            },
+            Err(_) => panic!(
+                "invalid value for max_wait: {} is not a Duration",
+                self.max_wait
+            ),
         }
     }
     pub fn range_min_max(&self) -> (u32, u32) {

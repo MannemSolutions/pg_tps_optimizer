@@ -4,7 +4,8 @@ use postgres::{Client, NoTls};
 use postgres_openssl::MakeTlsConnector;
 use std::borrow::Borrow;
 use std::collections::HashMap;
-use users::{get_current_uid, get_user_by_uid};
+use std::fmt;
+use uzers::{get_current_uid, get_user_by_uid};
 
 #[derive(Debug, Clone)]
 pub struct Dsn {
@@ -23,12 +24,25 @@ fn os_user_name() -> String {
     user.to_string()
 }
 
+impl fmt::Display for Dsn {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut vec = Vec::new();
+        for (k, mut v) in self.clone().kv {
+            v = v.replace('\\', r"\\");
+            v = v.replace('\'', r"\'");
+            vec.push(format!("{0}='{1}'", k, v))
+        }
+        vec.sort();
+        write!(f, "{}", vec.join(" "))
+    }
+}
+
 impl Dsn {
     pub fn from_string(from: &str) -> Dsn {
         let mut dsn = Dsn::new();
-        let split = from.split(" ");
+        let split = from.split(' ');
         for s in split {
-            if let Some((key, value)) = s.split_once("=") {
+            if let Some((key, value)) = s.split_once('=') {
                 dsn.set_value(key, value)
             }
         }
@@ -97,16 +111,19 @@ impl Dsn {
         );
         Dsn { kv, ssl_mode }
     }
-    pub fn to_string(&self) -> String {
-        let mut vec = Vec::new();
-        for (k, mut v) in self.clone().kv {
-            v = v.replace(r"\", r"\\");
-            v = v.replace("'", r"\'");
-            vec.push(format!("{0}='{1}'", k, v))
-        }
-        vec.sort();
-        vec.join(" ")
-    }
+    //    pub fn debug(&self) -> String {
+    //        let mut vec = Vec::new();
+    //        for (k, mut v) in self.clone().kv {
+    //            if k == "password" {
+    //                v = "*****".to_string();
+    //            }
+    //            v = v.replace('\\', r"\\");
+    //            v = v.replace('\'', r"\'");
+    //            vec.push(format!("{0}='{1}'", k, v))
+    //        }
+    //        vec.sort();
+    //        vec.join(" ")
+    //    }
     fn set_value(&mut self, key: &str, value: &str) {
         self.kv.insert(key.to_string(), value.to_string());
         if key.eq("sslmode") {
@@ -131,19 +148,17 @@ impl Dsn {
     pub fn verify_hostname(&self) -> bool {
         self.ssl_mode.eq("verify-full")
     }
-    pub fn client(self) -> Client {
+    pub fn client(self) -> Result<Client, Box<dyn std::error::Error>> {
         let copy = self.cleanse().to_string();
         let conn_string = copy.as_str();
         let cert_file = self.get_value("sslcert", "");
         if !self.copy().use_tls() || cert_file.is_empty() {
-            return postgres::Client::connect(conn_string, NoTls).unwrap();
+            let client = postgres::Client::connect(conn_string, NoTls)?;
+            return Ok(client);
             // The source_connection object performs the actual communication
             // with the database, so spawn it off to run on its own.
         }
-        let mut builder = match SslConnector::builder(SslMethod::tls()) {
-            Ok(value) => value,
-            Err(error) => panic!("connector error: {}", error),
-        };
+        let mut builder = SslConnector::builder(SslMethod::tls())?;
         if let Err(error) = builder.set_certificate_chain_file(cert_file) {
             eprintln!("set_certificate_file: {}", error);
         }
@@ -161,7 +176,8 @@ impl Dsn {
             config.set_verify_hostname(self.verify_hostname());
             Ok(())
         });
-        return postgres::Client::connect(conn_string, connector).unwrap();
+        let client = postgres::Client::connect(conn_string, connector)?;
+        Ok(client)
     }
 }
 
@@ -217,7 +233,10 @@ mod tests {
         assert_eq!(d.use_tls(), true);
         assert_eq!(
             d.cleanse().to_string(),
-            format!(concat!("dbname='{0}' host='/tmp' password='' port='5432' user='{0}'"), os_user_name())
+            format!(
+                concat!("dbname='{0}' host='/tmp' password='' port='5432' user='{0}'"),
+                os_user_name()
+            )
         );
         let sslcert = generic::shell_exists("~/.postgresql/postgresql.crt");
         let sslcrl = generic::shell_exists("~/.postgresql/root.crl");
@@ -262,7 +281,7 @@ mod tests {
             return Ok(());
         }
         let dsn = Dsn::from_string(constr.as_str());
-        let mut client = dsn.client();
+        let mut client = dsn.client().unwrap();
         let query = "select oid, datname from pg_database";
         println!("query: {}", query);
         for row in &client.query(query, &[])? {

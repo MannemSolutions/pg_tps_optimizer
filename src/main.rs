@@ -27,7 +27,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let max_wait: chrono::Duration = args.as_max_wait();
 
     println!("min threads: {} max threads: {}", min_threads, max_threads);
-    println!("max_wait: {}s, min_samples: {}, spread: {}", max_wait.num_seconds(), args.min_samples, args.spread);
+    println!(
+        "max_wait: {}s, min_samples: {}, spread: {}",
+        max_wait.num_seconds(),
+        args.min_samples,
+        args.spread
+    );
 
     println!("|---------------------|---------|-----------------------------------------|-----------------------|");
     println!("| Date       time     | Clients |                 Performance             |       Postgres        |");
@@ -65,9 +70,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     );
             }
             None => {
-                println!("| {0} | {1:7.5} |   {2:>11.3} | {3:>9.1} | {4:>11.3} | {5:>9.3} | {6:>9.3} |",
-                         chrono::offset::Local::now().format("%Y-%m-%d %H:%M:%S"),
-                         num_threads, "?", "?", "?", "?", "?");
+                println!(
+                    "| {0} | {1:7.5} |   {2:>11.3} | {3:>9.1} | {4:>11.3} | {5:>9.3} | {6:>9.3} |",
+                    chrono::offset::Local::now().format("%Y-%m-%d %H:%M:%S"),
+                    num_threads,
+                    "?",
+                    "?",
+                    "?",
+                    "?",
+                    "?"
+                );
                 break;
             }
         }

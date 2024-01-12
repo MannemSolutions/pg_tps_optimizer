@@ -29,9 +29,9 @@ Therefore we have multiple structures. How it works (and some definitions):
   within parameters, we return a summary (mean TPS and mean latency) as a final TestResult.
 */
 
+use std::convert::TryFrom;
 use std::vec::Vec;
 use std::{collections::BTreeMap, iter::FromIterator};
-use std::convert::TryFrom;
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use num::integer::Roots;
@@ -57,14 +57,14 @@ fn percent_of(first: f64, second: f64) -> f64 {
     if first == 0.0 {
         return 0.0;
     }
-    return 100.0 * second / first;
+    100.0 * second / first
 }
 
 /* Duration supports a div by i32, but sometimes we have an overflow if we use that option*/
 fn div_duration(d: Duration, x: u64) -> Duration {
     const MAX_U32: u64 = i32::MAX as u64;
     if x == 0 {
-        return Duration::zero();
+        Duration::zero()
     } else if x > MAX_U32 {
         match i32::try_from(x.sqrt()).ok() {
             Some(rt) => return d / rt,
@@ -213,7 +213,7 @@ impl Clone for ParallelSamples {
     fn clone(&self) -> ParallelSamples {
         let mut pss = ParallelSamples::new();
         for (i, ps) in &self.parallel_samples {
-            pss.parallel_samples.insert(*i, ps.clone());
+            pss.parallel_samples.insert(*i, *ps);
         }
         pss
     }
@@ -223,7 +223,7 @@ impl Iterator for ParallelSamples {
     type Item = ParallelSample;
     fn next(&mut self) -> Option<Self::Item> {
         if self.parallel_samples.len() != self.iterator_keys.len() {
-            self.iterator_keys = Vec::from_iter(self.parallel_samples.iter().map(|(key, _)| *key));
+            self.iterator_keys = Vec::from_iter(self.parallel_samples.keys().copied());
             self.iterator_keys.sort();
             self.current = 0
         }
@@ -268,7 +268,7 @@ impl ParallelSamples {
         self
     }
     pub fn append(mut self, samples: &ParallelSamples) -> ParallelSamples {
-        for (_, sample) in &samples.parallel_samples {
+        for sample in samples.parallel_samples.values() {
             self.add(*sample);
         }
         self.limit(100)
@@ -328,7 +328,7 @@ impl TestResults {
         }
         match num {
             0 => tot_lat,
-            _ => div_duration(tot_lat,  num)
+            _ => div_duration(tot_lat, num),
         }
     }
     fn len(&self) -> usize {
@@ -405,13 +405,13 @@ impl TestResults {
                         stdev.latency.num_microseconds().unwrap_or(0) as f64,
                     )))
                 {
-                    return None;
+                    None
                 } else {
                     mean.stable = true;
-                    return Some(mean);
+                    Some(mean)
                 }
             }
-            _ => return None,
+            _ => None,
         }
     }
 }

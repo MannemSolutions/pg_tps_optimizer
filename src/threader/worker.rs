@@ -1,4 +1,4 @@
-use crate::threader::sample::{ParallelSamples,Sample};
+use crate::threader::sample::{ParallelSamples, Sample};
 use chrono::Utc;
 use postgres::Client;
 use std::sync::mpsc;
@@ -59,7 +59,12 @@ impl Worker {
                     break;
                 }
             }
-            match sample(&mut client, self.workload.w_type(), (tps / 10_f64) as u64, self.id) {
+            match sample(
+                &mut client,
+                self.workload.w_type(),
+                (tps / 10_f64) as u64,
+                self.id,
+            ) {
                 Ok(sample) => {
                     //tps = samples.tot_tps_singlethread() as u64;
                     let mut pss = ParallelSamples::new();
@@ -100,18 +105,18 @@ fn sample(
             }
             WorkloadType::Transactional => {
                 let mut trans = client.transaction()?;
-                if query != "" {
+                if !query.is_empty() {
                     trans.query(query.as_str(), &[&thread_id])?;
                 }
                 trans.commit()?;
             }
             WorkloadType::PreparedTransactional => {
                 let mut trans = client.transaction()?;
-                if query != "" {
+                if !query.is_empty() {
                     let prep = trans.prepare(&query)?;
                     let _row = trans.query(&prep, &[&thread_id]);
                 }
-                let _res = trans.commit()?;
+                trans.commit()?;
             }
             WorkloadType::Default => {
                 client.query(query.as_str(), &[&thread_id])?;

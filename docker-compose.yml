@@ -16,7 +16,7 @@ services:
     - ./:/host
     - ./config/postgresql.conf:/etc/postgresql/postgresql.conf
   chainsmith:
-    image: chainsmith
+    image: mannemsolutions/chainsmith
     volumes:
     - ./:/host
     environment:

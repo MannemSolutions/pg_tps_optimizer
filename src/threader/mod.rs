@@ -30,7 +30,7 @@ impl Threader {
         max_workers += 1;
         let done = Arc::new(RwLock::new(false));
         let (tx, rx) = mpsc::channel();
-        let consumers = Vec::with_capacity(max_workers as usize);
+        let consumers = Vec::with_capacity(max_workers);
         Threader {
             workload,
             num_workers: 0,
@@ -45,13 +45,10 @@ impl Threader {
     pub fn scaleup(&mut self, new_workers: u32) {
         let mut extra_workers = new_workers - self.num_workers as u32;
         //println!("New worker: {}, extra workers: {}", new_workers, extra_workers);
-        match self.consumers.pop() {
-            Some(mut last_consumer) => {
-                extra_workers =
-                    last_consumer.scaleup(extra_workers, self.done.clone(), self.workload.clone());
-                self.consumers.push(last_consumer);
-            }
-            None => (),
+        if let Some(mut last_consumer) = self.consumers.pop() {
+            extra_workers =
+                last_consumer.scaleup(extra_workers, self.done.clone(), self.workload.clone());
+            self.consumers.push(last_consumer);
         }
         for id in self.consumers.len()..self.max_workers {
             if extra_workers == 0 {
@@ -93,11 +90,8 @@ impl Threader {
                 return test_results.mean();
             }
             i += 1;
-            match test_results.verify(spread) {
-                Some(test_result) => {
-                    return Some(test_result);
-                }
-                None => (),
+            if let Some(test_result) = test_results.verify(spread) {
+                return Some(test_result);
             }
         }
     }
@@ -124,6 +118,6 @@ impl Threader {
                 break;
             }
         }
-        return parallel_samples;
+        parallel_samples
     }
 }

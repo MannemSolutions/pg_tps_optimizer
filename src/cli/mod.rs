@@ -2,7 +2,6 @@ use crate::dsn::Dsn;
 use crate::generic;
 use crate::threader::workload::Workload;
 use duration_string::DurationString;
-use regex;
 use structopt::StructOpt;
 
 /// Search for a pattern in a file and display the lines that contain it.
@@ -79,7 +78,7 @@ impl Params {
     }
     pub fn get_args() -> Params {
         let mut args = Params::from_args();
-        args.dsn = generic::get_env_str(&args.dsn, &String::from("PGTPSSOURCE"), &String::from(""));
+        args.dsn = generic::get_env_str(&args.dsn, &String::from("PGTPSSOURCE"), "");
         args.query = generic::get_env_str(
             &args.query,
             &String::from("PGTPSQUERY"),

@@ -28,13 +28,16 @@ impl Workload {
     pub fn as_string(&self) -> String {
         format!(
             "dsn:{}\ntransactional: {}\nprepared: {}",
-            self.dsn.clone().to_string(),
+            self.dsn.clone(),
             self.transactional,
             self.prepared
         )
     }
     pub fn client(&self) -> Client {
-        self.dsn.clone().client()
+        self.dsn
+            .clone()
+            .client()
+            .expect("Cloning a client should never result in an error")
     }
     pub fn w_type(&self) -> WorkloadType {
         match (self.transactional, self.prepared) {

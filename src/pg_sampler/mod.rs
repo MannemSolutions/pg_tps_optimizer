@@ -24,7 +24,7 @@ pub struct PgSampler {
 
 impl PgSampler {
     pub fn new(dsn: Dsn) -> Result<PgSampler, Error> {
-        let mut client: Client = dsn.client();
+        let mut client: Client = dsn.client().unwrap();
         let statement: Statement = client.prepare(SAMPLE_QUERY)?;
         Ok(PgSampler {
             client,
@@ -36,7 +36,7 @@ impl PgSampler {
     pub fn next(&mut self) -> Result<(), Error> {
         let rows = self.client.query(&self.statement, &[&self.previous.lsn])?;
         assert_eq!(rows.len(), 1);
-        let row = rows.get(0).unwrap();
+        let row = rows.first().unwrap();
         self.previous = self.latest.clone();
         self.latest = TransactDataSample {
             samplemoment: row.get(0),

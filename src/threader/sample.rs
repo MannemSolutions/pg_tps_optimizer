@@ -29,9 +29,9 @@ Therefore we have multiple structures. How it works (and some definitions):
   within parameters, we return a summary (mean TPS and mean latency) as a final TestResult.
 */
 
+use std::convert::TryFrom;
 use std::vec::Vec;
 use std::{collections::BTreeMap, iter::FromIterator};
-use std::convert::TryFrom;
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use num::integer::Roots;
@@ -328,7 +328,7 @@ impl TestResults {
         }
         match num {
             0 => tot_lat,
-            _ => div_duration(tot_lat,  num)
+            _ => div_duration(tot_lat, num),
         }
     }
     fn len(&self) -> usize {

@@ -217,7 +217,10 @@ mod tests {
         assert_eq!(d.use_tls(), true);
         assert_eq!(
             d.cleanse().to_string(),
-            format!(concat!("dbname='{0}' host='/tmp' password='' port='5432' user='{0}'"), os_user_name())
+            format!(
+                concat!("dbname='{0}' host='/tmp' password='' port='5432' user='{0}'"),
+                os_user_name()
+            )
         );
         let sslcert = generic::shell_exists("~/.postgresql/postgresql.crt");
         let sslcrl = generic::shell_exists("~/.postgresql/root.crl");

@@ -59,12 +59,13 @@ pub struct Params {
         default_value,
         short = "m",
         long,
-        help = "number of samples before we check the spread.")]
+        help = "number of samples before we check the spread."
+    )]
     pub min_samples: u32,
 
     /// max_wait
     #[structopt(
-        default_value="",
+        default_value = "",
         short = "M",
         long,
         help = "Give it this ammount of seconds before we decide it wil never stabilize."
@@ -112,9 +113,15 @@ impl Params {
         match DurationString::from_string(self.max_wait.clone()) {
             Ok(ds) => match chrono::Duration::from_std(ds.into()) {
                 Ok(duration) => duration,
-                Err(_) => panic!("invalid value for max_wait: {} is not a Duration", self.max_wait),
-            }
-            Err(_) => panic!("invalid value for max_wait: {} is not a Duration", self.max_wait),
+                Err(_) => panic!(
+                    "invalid value for max_wait: {} is not a Duration",
+                    self.max_wait
+                ),
+            },
+            Err(_) => panic!(
+                "invalid value for max_wait: {} is not a Duration",
+                self.max_wait
+            ),
         }
     }
     pub fn range_min_max(&self) -> (u32, u32) {

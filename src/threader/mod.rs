@@ -1,13 +1,13 @@
+use crate::threader::consumer::{Consumer, THREADS_PER_CONSUMER};
 use crate::threader::sample::{ParallelSamples, TestResult};
 use crate::threader::workload::Workload;
-use crate::threader::consumer::{Consumer, THREADS_PER_CONSUMER};
 use chrono::{Duration, Utc};
 use std::sync::{mpsc, Arc, RwLock};
 use std::thread;
 
+mod consumer;
 mod sample;
 mod worker;
-mod consumer;
 pub mod workload;
 
 pub struct Threader {
@@ -39,7 +39,7 @@ impl Threader {
             tx,
             rx,
             done,
-            consumers
+            consumers,
         }
     }
     pub fn scaleup(&mut self, new_workers: u32) {
@@ -47,10 +47,8 @@ impl Threader {
         //println!("New worker: {}, extra workers: {}", new_workers, extra_workers);
         match self.consumers.pop() {
             Some(mut last_consumer) => {
-                extra_workers = last_consumer.scaleup(
-                    extra_workers,
-                    self.done.clone(),
-                    self.workload.clone());
+                extra_workers =
+                    last_consumer.scaleup(extra_workers, self.done.clone(), self.workload.clone());
                 self.consumers.push(last_consumer);
             }
             None => (),
@@ -60,11 +58,8 @@ impl Threader {
                 break;
             }
             let mut new_consumer = Consumer::new(id as u32, self.tx.clone());
-            extra_workers = new_consumer.scaleup(
-                extra_workers,
-                self.done.clone(),
-                self.workload.clone(),
-                );
+            extra_workers =
+                new_consumer.scaleup(extra_workers, self.done.clone(), self.workload.clone());
             self.consumers.push(new_consumer);
         }
         self.num_workers = new_workers as usize;

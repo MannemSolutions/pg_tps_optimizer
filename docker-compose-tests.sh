@@ -6,7 +6,7 @@ docker rmi pg_tps_optimizer-pg_tps_optimizer || echo image was not there
 if [ ! -e config/tls/int_server/certs/localhost.pem ]; then
   rm -rf config/tls
   chmod 777 config
-  docker-compose up chainsmith
+  docker-compose up --exit-code-from chainsmith chainsmith
 fi
 docker-compose up -d postgres
 
@@ -16,4 +16,4 @@ for ((i=0;i<60;i++)); do
 done
 
 cargo test -- --include-ignored
-docker-compose up pg_tps_optimizer
+docker-compose up --exit-code-from pg_tps_optimizer pg_tps_optimizer

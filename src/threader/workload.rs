@@ -28,7 +28,7 @@ impl Workload {
     pub fn as_string(&self) -> String {
         format!(
             "dsn:{}\ntransactional: {}\nprepared: {}",
-            self.dsn.clone(),
+            self.dsn.debug(),
             self.transactional,
             self.prepared
         )

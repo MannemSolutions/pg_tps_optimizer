@@ -111,19 +111,19 @@ impl Dsn {
         );
         Dsn { kv, ssl_mode }
     }
-    //    pub fn debug(&self) -> String {
-    //        let mut vec = Vec::new();
-    //        for (k, mut v) in self.clone().kv {
-    //            if k == "password" {
-    //                v = "*****".to_string();
-    //            }
-    //            v = v.replace('\\', r"\\");
-    //            v = v.replace('\'', r"\'");
-    //            vec.push(format!("{0}='{1}'", k, v))
-    //        }
-    //        vec.sort();
-    //        vec.join(" ")
-    //    }
+    pub fn debug(&self) -> String {
+        let mut vec = Vec::new();
+        for (k, mut v) in self.clone().kv {
+            if k == "password" {
+                v = "*****".to_string();
+            }
+            v = v.replace('\\', r"\\");
+            v = v.replace('\'', r"\'");
+            vec.push(format!("{0}='{1}'", k, v))
+        }
+        vec.sort();
+        vec.join(" ")
+    }
     fn set_value(&mut self, key: &str, value: &str) {
         self.kv.insert(key.to_string(), value.to_string());
         if key.eq("sslmode") {
